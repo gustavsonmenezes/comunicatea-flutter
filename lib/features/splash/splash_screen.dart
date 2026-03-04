@@ -73,7 +73,7 @@ class _SplashScreenState extends State<SplashScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Logo animado
+              // Logo animado com a nova imagem
               ScaleTransition(
                 scale: _scaleAnimation,
                 child: FadeTransition(
@@ -92,10 +92,18 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.chat_bubble_outline,
-                      size: 90,
-                      color: Colors.white,
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/logocomunicatea.jpeg',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Icon(
+                            Icons.chat_bubble_outline,
+                            size: 90,
+                            color: Colors.white,
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),

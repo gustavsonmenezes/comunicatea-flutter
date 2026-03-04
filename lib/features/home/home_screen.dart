@@ -26,7 +26,7 @@ class HomeScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Logo com animação
+                  // LOGO COM A IMAGEM (SUBSTITUÍDO)
                   Container(
                     width: 160,
                     height: 160,
@@ -41,10 +41,19 @@ class HomeScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.chat_bubble_outline,
-                      size: 90,
-                      color: Colors.white,
+                    child: ClipOval(
+                      child: Image.asset(
+                        'assets/images/logocomunicatea.jpeg',
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          print('Erro ao carregar imagem: $error');
+                          return const Icon(
+                            Icons.chat_bubble_outline,
+                            size: 90,
+                            color: Colors.white,
+                          );
+                        },
+                      ),
                     ),
                   ),
                   const SizedBox(height: 50),
@@ -89,8 +98,7 @@ class HomeScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) =>
-                              const CommunicationScreen(),
+                              builder: (context) => const CommunicationScreen(),
                             ),
                           );
                         },
@@ -161,16 +169,26 @@ class HomeScreen extends StatelessWidget {
                         context: context,
                         applicationName: 'COMUNICA-TEA',
                         applicationVersion: '2.0.0',
-                        applicationIcon: const Icon(
-                          Icons.chat_bubble_outline,
-                          size: 50,
-                          color: AppTheme.primaryColor,
+                        applicationIcon: ClipOval(
+                          child: Image.asset(
+                            'assets/images/logocomunicatea.jpeg',
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return const Icon(
+                                Icons.chat_bubble_outline,
+                                size: 50,
+                                color: AppTheme.primaryColor,
+                              );
+                            },
+                          ),
                         ),
                         children: const [
                           Padding(
                             padding: EdgeInsets.all(16.0),
                             child: Text(
-                              'Plataforma digital de Comunicação Aumentativa e Alternativa para crianças com Transtorno do Espectro Autista.\\n\\n'
+                              'Plataforma digital de Comunicação Aumentativa e Alternativa para crianças com Transtorno do Espectro Autista.\n\n'
                                   'Desenvolvido por Gustavson Barros com foco em acessibilidade, inclusão e usabilidade.',
                             ),
                           ),
