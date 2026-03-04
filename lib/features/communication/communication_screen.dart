@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import '../settings/settings_screen.dart';
+import '../../models/pictogram_model.dart';
+import '../../theme/app_theme.dart';
+import '../../widgets/pictogram_card.dart';
+import '../../widgets/phrase_bar.dart';
 
 class CommunicationScreen extends StatefulWidget {
   const CommunicationScreen({super.key});
@@ -11,37 +15,11 @@ class CommunicationScreen extends StatefulWidget {
 
 class _CommunicationScreenState extends State<CommunicationScreen> {
   final List<String> _fraseAtual = [];
-  FlutterTts? _flutterTts; // Mudamos para nullable com ?
+  FlutterTts? _flutterTts;
   bool _isSpeaking = false;
-  bool _isTtsInitialized = false; // Flag para saber se já inicializou
-
-  // Lista de categorias com pictogramas
-  final List<Map<String, dynamic>> categorias = [
-    {
-      'nome': 'Necessidades',
-      'icone': Icons.local_drink,
-      'cor': Colors.blue,
-      'pictogramas': ['Água', 'Comida', 'Banheiro', 'Descansar']
-    },
-    {
-      'nome': 'Sentimentos',
-      'icone': Icons.emoji_emotions,
-      'cor': Colors.red,
-      'pictogramas': ['Feliz', 'Triste', 'Bravo', 'Cansado']
-    },
-    {
-      'nome': 'Ações',
-      'icone': Icons.directions_run,
-      'cor': Colors.green,
-      'pictogramas': ['Brincar', 'Comer', 'Dormir', 'Estudar']
-    },
-    {
-      'nome': 'Pessoas',
-      'icone': Icons.people,
-      'cor': Colors.purple,
-      'pictogramas': ['Mamãe', 'Papai', 'Amigo', 'Professor']
-    },
-  ];
+  bool _isTtsInitialized = false;
+  int _selectedCategoryIndex = 0;
+  double _pictogramSize = 100;
 
   @override
   void initState() {
@@ -52,20 +30,11 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   void _initTts() async {
     try {
       FlutterTts flutterTts = FlutterTts();
-
-      // Configurar o idioma para português do Brasil
       await flutterTts.setLanguage("pt-BR");
-
-      // Configurar velocidade da fala (0.0 a 1.0)
       await flutterTts.setSpeechRate(0.5);
-
-      // Configurar tom da voz (0.0 a 2.0)
       await flutterTts.setPitch(1.0);
-
-      // Configurar volume (0.0 a 1.0)
       await flutterTts.setVolume(1.0);
 
-      // Listeners para saber quando começa/termina de falar
       flutterTts.setStartHandler(() {
         if (mounted) {
           setState(() {
@@ -108,14 +77,12 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   Future<void> _falar(String texto) async {
     if (texto.isEmpty) return;
 
-    // Verifica se o TTS foi inicializado
     if (!_isTtsInitialized || _flutterTts == null) {
       _mostrarErroTts();
       return;
     }
 
     try {
-      // Para se já estiver falando
       if (_isSpeaking) {
         await _flutterTts!.stop();
       }
@@ -145,14 +112,27 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     setState(() {
       _fraseAtual.add(pictograma);
     });
-    // Falar o pictograma individual ao clicar
     _falar(pictograma);
+  }
+
+  void _removerUltimoPictograma() {
+    if (_fraseAtual.isNotEmpty) {
+      setState(() {
+        _fraseAtual.removeLast();
+      });
+    }
   }
 
   void _limparFrase() {
     setState(() {
       _fraseAtual.clear();
     });
+  }
+
+  void _pararFala() {
+    if (_isSpeaking) {
+      _flutterTts?.stop();
+    }
   }
 
   @override
@@ -163,11 +143,14 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentCategory = defaultCategories[_selectedCategoryIndex];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('COMUNICA-TEA'),
-        backgroundColor: Colors.blue.shade700,
+        backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
+        elevation: 2,
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -182,118 +165,61 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
       ),
       body: Column(
         children: [
-          // Barra de frase atual
+          // Barra de frase
+          PhraseBar(
+            phrase: _fraseAtual,
+            isSpeaking: _isSpeaking,
+            onSpeak: _isSpeaking ? _pararFala : _falarFrase,
+            onClear: _limparFrase,
+            onRemoveLast: _removerUltimoPictograma,
+            isEnabled: _isTtsInitialized,
+          ),
+
+          // Abas de categorias
           Container(
-            padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade100,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: Text(
-                      _fraseAtual.isEmpty
-                          ? 'Toque nos pictogramas para se comunicar'
-                          : _fraseAtual.join(' '),
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: _fraseAtual.isEmpty ? Colors.grey.shade600 : Colors.black,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.blue.shade700,
-                  child: IconButton(
-                    icon: Icon(
-                      _isSpeaking ? Icons.stop : Icons.volume_up,
-                      color: Colors.white,
-                    ),
-                    onPressed: _fraseAtual.isNotEmpty
-                        ? (_isSpeaking ? _flutterTts?.stop : _falarFrase)
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.grey.shade400,
-                  child: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.white),
-                    onPressed: _fraseAtual.isNotEmpty ? _limparFrase : null,
-                  ),
-                ),
-              ],
+            height: 100,
+            color: Colors.white,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: defaultCategories.length,
+              itemBuilder: (context, index) {
+                return CategoryTab(
+                  category: defaultCategories[index],
+                  isSelected: index == _selectedCategoryIndex,
+                  onTap: () {
+                    setState(() {
+                      _selectedCategoryIndex = index;
+                    });
+                  },
+                );
+              },
             ),
           ),
 
-          // Lista de categorias
+          // Grade de pictogramas
           Expanded(
-            child: ListView.builder(
-              itemCount: categorias.length,
-              itemBuilder: (context, index) {
-                final categoria = categorias[index];
-                return Card(
-                  margin: const EdgeInsets.all(8),
-                  child: ExpansionTile(
-                    leading: CircleAvatar(
-                      backgroundColor: categoria['cor'],
-                      child: Icon(categoria['icone'], color: Colors.white),
-                    ),
-                    title: Text(
-                      categoria['nome'],
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: categoria['pictogramas'].map<Widget>((pictograma) {
-                            return GestureDetector(
-                              onTap: () => _adicionarPictograma(pictograma),
-                              onLongPress: () => _falar(pictograma),
-                              child: Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  color: categoria['cor'].withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: categoria['cor']),
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.image,
-                                      size: 40,
-                                      color: categoria['cor'],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      pictograma,
-                                      style: TextStyle(color: categoria['cor']),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              },
+            child: Container(
+              color: AppTheme.backgroundColor,
+              padding: const EdgeInsets.all(12),
+              child: GridView.builder(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1,
+                ),
+                itemCount: currentCategory.pictograms.length,
+                itemBuilder: (context, index) {
+                  final pictogram = currentCategory.pictograms[index];
+                  return PictogramCard(
+                    pictogram: pictogram,
+                    categoryColor: currentCategory.color,
+                    size: _pictogramSize,
+                    onTap: () => _adicionarPictograma(pictogram.label),
+                    onLongPress: () => _falar(pictogram.label),
+                  );
+                },
+              ),
             ),
           ),
         ],

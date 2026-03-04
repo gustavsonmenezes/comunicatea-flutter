@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'theme/app_theme.dart';
 import 'features/home/home_screen.dart';
 
 void main() {
@@ -13,10 +14,9 @@ class ComunicaTeaApp extends StatelessWidget {
     return MaterialApp(
       title: 'COMUNICA-TEA',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.light,
       home: const HomeScreen(),
     );
   }
