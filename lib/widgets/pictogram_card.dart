@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../models/pictogram_model.dart';
 import '../theme/app_theme.dart';
+import '../services/sound_manager.dart';
 
 class PictogramCard extends StatefulWidget {
   final Pictogram pictogram;
@@ -55,6 +57,7 @@ class _PictogramCardState extends State<PictogramCard>
       onTapDown: (_) => _animationController.forward(),
       onTapUp: (_) {
         _animationController.reverse();
+        SoundManager().playSuccess(); // Feedback sonoro ao tocar
         widget.onTap();
       },
       onTapCancel: () => _animationController.reverse(),

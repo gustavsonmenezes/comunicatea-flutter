@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../services/sound_manager.dart';
 
 class PhraseBar extends StatelessWidget {
   final List<String> phrase;
@@ -73,7 +74,12 @@ class PhraseBar extends StatelessWidget {
               // Botão Falar
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: isEnabled && phrase.isNotEmpty ? onSpeak : null,
+                  onPressed: isEnabled && phrase.isNotEmpty
+                      ? () {
+                    SoundManager().playSuccess();
+                    onSpeak();
+                  }
+                      : null,
                   icon: Icon(
                     isSpeaking ? Icons.stop : Icons.volume_up,
                     size: 20,
@@ -102,7 +108,12 @@ class PhraseBar extends StatelessWidget {
               SizedBox(
                 width: 50,
                 child: ElevatedButton(
-                  onPressed: isEnabled && phrase.isNotEmpty ? onRemoveLast : null,
+                  onPressed: isEnabled && phrase.isNotEmpty
+                      ? () {
+                    SoundManager().playError(); // Som de alerta ao remover
+                    onRemoveLast();
+                  }
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.warningColor,
                     foregroundColor: Colors.white,
@@ -121,7 +132,12 @@ class PhraseBar extends StatelessWidget {
               SizedBox(
                 width: 50,
                 child: ElevatedButton(
-                  onPressed: isEnabled && phrase.isNotEmpty ? onClear : null,
+                  onPressed: isEnabled && phrase.isNotEmpty
+                      ? () {
+                    SoundManager().playError(); // Som de alerta ao limpar tudo
+                    onClear();
+                  }
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.errorColor,
                     foregroundColor: Colors.white,

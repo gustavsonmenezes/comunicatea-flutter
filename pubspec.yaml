@@ -37,6 +37,8 @@ dependencies:
 
   flutter_tts: ^4.1.0  # Para síntese de voz (TTS) multiplataforma
 
+  audioplayers: ^6.1.1  # Para reprodução de áudio (sons de sucesso/erro)
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -54,13 +56,15 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
   # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
+  # included with your application, so that you can use the icons in the
+  # material Icons class.
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/images/logocomunicatea.jpeg
+    - assets/sounds/success.mp3  # Som de sucesso
+    - assets/sounds/error.mp3    # Som de erro/alerta
     # Se quiser incluir todas as imagens da pasta:
     # - assets/images/
 
