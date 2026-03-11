@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'theme/app_theme.dart';
 import 'features/home/home_screen.dart';
+import 'services/gamification_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializar gamificação
+  final gamificationService = GamificationService();
+  await gamificationService.init();
+
   runApp(const ComunicaTeaApp());
 }
 

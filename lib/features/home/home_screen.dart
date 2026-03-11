@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../communication/communication_screen.dart';
 import '../settings/settings_screen.dart';
+import '../achievements/achievements_screen.dart';
 import '../../theme/app_theme.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -9,6 +10,25 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('COMUNICA-TEA'),
+        backgroundColor: AppTheme.primaryColor,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.emoji_events, size: 28),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AchievementsScreen(),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(

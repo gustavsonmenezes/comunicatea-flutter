@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:flutter/foundation.dart';
 import '../settings/settings_screen.dart';
 import '../../models/pictogram_model.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/pictogram_card.dart';
 import '../../widgets/phrase_bar.dart';
+import '../../services/gamification_service.dart';
 
 class CommunicationScreen extends StatefulWidget {
   const CommunicationScreen({super.key});
@@ -20,10 +22,12 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   bool _isTtsInitialized = false;
   int _selectedCategoryIndex = 0;
   double _pictogramSize = 100;
+  late final GamificationService _gamificationService;
 
   @override
   void initState() {
     super.initState();
+    _gamificationService = GamificationService();
     _initTts();
   }
 
@@ -104,8 +108,14 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
 
   void _falarFrase() {
     if (_fraseAtual.isEmpty) return;
+
     final frase = _fraseAtual.join(' ');
     _falar(frase);
+
+    // Lógica de Gamificação
+    if (_fraseAtual.length >= 2) {
+      _gamificationService.addStar();
+    }
   }
 
   void _adicionarPictograma(String pictograma) {
@@ -152,6 +162,30 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
         foregroundColor: Colors.white,
         elevation: 2,
         actions: [
+          // Contador de Estrelas
+          ListenableBuilder(
+            listenable: _gamificationService,
+            builder: (context, child) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.star, color: Colors.amber, size: 28),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${_gamificationService.progress.totalStars}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -202,7 +236,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
               color: AppTheme.backgroundColor,
               padding: const EdgeInsets.all(12),
               child: GridView.builder(
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
