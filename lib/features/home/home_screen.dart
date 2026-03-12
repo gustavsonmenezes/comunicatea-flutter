@@ -1,11 +1,37 @@
+// features/home/home_screen.dart
 import 'package:flutter/material.dart';
 import '../communication/communication_screen.dart';
 import '../settings/settings_screen.dart';
 import '../achievements/achievements_screen.dart';
 import '../../theme/app_theme.dart';
+import '../../services/profile_service.dart';
+import '../profiles/screens/profile_selection_screen.dart'; // PARA ESCOLHER PERFIL
+import '../profiles/screens/create_profile_screen.dart'; // PARA CRIAR PERFIL
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
+
+  Future<void> _handleStartCommunication(BuildContext context) async {
+    final profileService = ProfileService();
+
+    if (profileService.profiles.isEmpty) {
+      // Caso 1: Nenhum perfil criado ainda → vai direto para criar
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const CreateProfileScreen(),
+        ),
+      );
+    } else {
+      // Caso 2: Já existem perfis → mostra tela de seleção
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const ProfileSelectionScreen(),
+        ),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +72,7 @@ class HomeScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // LOGO COM A IMAGEM (SUBSTITUÍDO)
+                  // Logo
                   Container(
                     width: 160,
                     height: 160,
@@ -66,7 +92,6 @@ class HomeScreen extends StatelessWidget {
                         'assets/images/logocomunicatea.jpeg',
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
-                          print('Erro ao carregar imagem: $error');
                           return const Icon(
                             Icons.chat_bubble_outline,
                             size: 90,
@@ -114,14 +139,7 @@ class HomeScreen extends StatelessWidget {
                     child: SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const CommunicationScreen(),
-                            ),
-                          );
-                        },
+                        onPressed: () => _handleStartCommunication(context),
                         icon: const Icon(Icons.chat, size: 28),
                         label: const Text(
                           'COMEÇAR A COMUNICAR',

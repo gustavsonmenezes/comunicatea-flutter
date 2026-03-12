@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import '../models/user_progress_model.dart';
 import '../models/achievement_model.dart';
-import '../models/pictogram_model.dart'; // Adicionar import
 
 class GamificationService extends ChangeNotifier {
   // Singleton
@@ -15,28 +14,48 @@ class GamificationService extends ChangeNotifier {
   UserProgress _progress = UserProgress();
   UserProgress get progress => _progress;
 
-  static const String _storageKey = 'user_progress';
+  String? _currentProfileId;
 
-  // Listeners para conquistas
+  static const String _storageKeyPrefix = 'user_progress_';
+
   final List<Function(Achievement)> _achievementListeners = [];
 
-  Future<void> init() async {
-    final prefs = await SharedPreferences.getInstance();
-    final String? data = prefs.getString(_storageKey);
-    if (data != null) {
-      try {
-        final json = jsonDecode(data);
-        _progress = UserProgress.fromJson(json);
-        notifyListeners();
-      } catch (e) {
-        debugPrint('Erro ao carregar progresso: $e');
+  Future<void> initializeForProfile(String profileId) async {
+    _currentProfileId = profileId;
+    await loadProgressForProfile(profileId);
+  }
+
+  Future<void> loadProgressForProfile(String profileId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? data = prefs.getString('$_storageKeyPrefix$profileId');
+
+      if (data != null) {
+        _progress = UserProgress.fromJson(jsonDecode(data));
+      } else {
         _progress = UserProgress();
       }
+
+      _currentProfileId = profileId;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Erro ao carregar progresso do perfil $profileId: $e');
+      _progress = UserProgress();
     }
   }
 
-  // Adiciona estrela
+  Future<void> deleteProgressForProfile(String profileId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('$_storageKeyPrefix$profileId');
+    } catch (e) {
+      debugPrint('Erro ao excluir progresso: $e');
+    }
+  }
+
   Future<void> addStar() async {
+    if (_currentProfileId == null) return;
+
     _progress.totalStars++;
 
     final newAchievements = _checkAndUnlockAchievements();
@@ -44,7 +63,6 @@ class GamificationService extends ChangeNotifier {
     await _save();
     notifyListeners();
 
-    // Notifica novas conquistas
     for (var achievement in newAchievements) {
       for (var listener in _achievementListeners) {
         listener(achievement);
@@ -52,11 +70,11 @@ class GamificationService extends ChangeNotifier {
     }
   }
 
-  // Registrar uso de categoria
   Future<void> registerCategoryUsage(String categoryId) async {
+    if (_currentProfileId == null) return;
+
     _progress.categoryUsage[categoryId] = (_progress.categoryUsage[categoryId] ?? 0) + 1;
 
-    // Verificar conquista de explorador (usou todas categorias - 6 categorias)
     if (_progress.categoryUsage.length >= 6 &&
         !_progress.unlockedAchievementIds.contains('dedicated')) {
 
@@ -67,7 +85,7 @@ class GamificationService extends ChangeNotifier {
 
       if (!_progress.unlockedAchievementIds.contains('dedicated')) {
         _progress.unlockedAchievementIds.add('dedicated');
-        _progress.totalStars += 10; // Bônus por explorador
+        _progress.totalStars += 10;
 
         for (var listener in _achievementListeners) {
           listener(explorerAchievement);
@@ -79,7 +97,6 @@ class GamificationService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Verifica e desbloqueia conquistas
   List<Achievement> _checkAndUnlockAchievements() {
     final newAchievements = <Achievement>[];
 
@@ -106,10 +123,12 @@ class GamificationService extends ChangeNotifier {
   }
 
   Future<void> _save() async {
+    if (_currentProfileId == null) return;
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final String jsonString = jsonEncode(_progress.toJson());
-      await prefs.setString(_storageKey, jsonString);
+      await prefs.setString('$_storageKeyPrefix$_currentProfileId', jsonString);
     } catch (e) {
       debugPrint('Erro ao salvar progresso: $e');
     }
