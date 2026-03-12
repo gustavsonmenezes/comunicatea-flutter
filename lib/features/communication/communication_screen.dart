@@ -1,12 +1,12 @@
+// features/communication/communication_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:flutter/foundation.dart';
-import '../settings/settings_screen.dart';
 import '../../models/pictogram_model.dart';
-import '../../theme/app_theme.dart';
 import '../../widgets/pictogram_card.dart';
-import '../../widgets/phrase_bar.dart';
+import '../../widgets/category_tab.dart';
 import '../../services/gamification_service.dart';
+import '../../models/achievement_model.dart';
+import '../../models/user_progress_model.dart'; // Adicionar este import
 
 class CommunicationScreen extends StatefulWidget {
   const CommunicationScreen({super.key});
@@ -16,113 +16,32 @@ class CommunicationScreen extends StatefulWidget {
 }
 
 class _CommunicationScreenState extends State<CommunicationScreen> {
-  final List<String> _fraseAtual = [];
-  FlutterTts? _flutterTts;
-  bool _isSpeaking = false;
-  bool _isTtsInitialized = false;
+  final List<Pictogram> _fraseAtual = [];
+  final FlutterTts _flutterTts = FlutterTts();
   int _selectedCategoryIndex = 0;
-  double _pictogramSize = 100;
-  late final GamificationService _gamificationService;
+
+  final GamificationService _gamificationService = GamificationService();
 
   @override
   void initState() {
     super.initState();
-    _gamificationService = GamificationService();
     _initTts();
+    _gamificationService.addAchievementListener(_onAchievementUnlocked);
   }
 
-  void _initTts() async {
-    try {
-      FlutterTts flutterTts = FlutterTts();
-      await flutterTts.setLanguage("pt-BR");
-      await flutterTts.setSpeechRate(0.5);
-      await flutterTts.setPitch(1.0);
-      await flutterTts.setVolume(1.0);
-
-      flutterTts.setStartHandler(() {
-        if (mounted) {
-          setState(() {
-            _isSpeaking = true;
-          });
-        }
-      });
-
-      flutterTts.setCompletionHandler(() {
-        if (mounted) {
-          setState(() {
-            _isSpeaking = false;
-          });
-        }
-      });
-
-      flutterTts.setErrorHandler((msg) {
-        if (mounted) {
-          setState(() {
-            _isSpeaking = false;
-          });
-        }
-        print("Erro no TTS: $msg");
-      });
-
-      setState(() {
-        _flutterTts = flutterTts;
-        _isTtsInitialized = true;
-      });
-
-      print("TTS inicializado com sucesso!");
-    } catch (e) {
-      print("Erro ao inicializar TTS: $e");
-      setState(() {
-        _isTtsInitialized = false;
-      });
-    }
+  void _onAchievementUnlocked(Achievement achievement) {
+    _showAchievementNotification(achievement);
   }
 
-  Future<void> _falar(String texto) async {
-    if (texto.isEmpty) return;
-
-    if (!_isTtsInitialized || _flutterTts == null) {
-      _mostrarErroTts();
-      return;
-    }
-
-    try {
-      if (_isSpeaking) {
-        await _flutterTts!.stop();
-      }
-      await _flutterTts!.speak(texto);
-    } catch (e) {
-      print("Erro ao falar: $e");
-      _mostrarErroTts();
-    }
+  Future<void> _initTts() async {
+    await _flutterTts.setLanguage("pt-BR");
+    await _flutterTts.setSpeechRate(0.5);
   }
 
-  void _mostrarErroTts() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Síntese de voz não disponível no momento.'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _falarFrase() {
-    if (_fraseAtual.isEmpty) return;
-
-    final frase = _fraseAtual.join(' ');
-    _falar(frase);
-
-    // Lógica de Gamificação
-    if (_fraseAtual.length >= 2) {
-      _gamificationService.addStar();
-    }
-  }
-
-  void _adicionarPictograma(String pictograma) {
+  void _adicionarPictograma(Pictogram pictogram) {
     setState(() {
-      _fraseAtual.add(pictograma);
+      _fraseAtual.add(pictogram);
     });
-    _falar(pictograma);
   }
 
   void _removerUltimoPictograma() {
@@ -139,86 +58,183 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     });
   }
 
-  void _pararFala() {
-    if (_isSpeaking) {
-      _flutterTts?.stop();
+  Future<void> _falarFrase() async {
+    if (_fraseAtual.isNotEmpty) {
+      String fraseCompleta = _fraseAtual.map((p) => p.label).join(' ');
+      await _flutterTts.speak(fraseCompleta);
+
+      // SÓ ganha estrela se tiver 2 ou mais palavras
+      if (_fraseAtual.length >= 2) {
+        await _gamificationService.addStar();
+
+        // Registrar categorias usadas
+        for (var pictogram in _fraseAtual) {
+          final category = _getCategoryForPictogram(pictogram.id);
+          if (category != null) {
+            await _gamificationService.registerCategoryUsage(category);
+          }
+        }
+      }
     }
   }
 
-  @override
-  void dispose() {
-    _flutterTts?.stop();
-    super.dispose();
+  String? _getCategoryForPictogram(String pictogramId) {
+    for (var category in defaultPictogramCategories) { // Nome atualizado
+      if (category.pictograms.any((p) => p.id == pictogramId)) {
+        return category.id;
+      }
+    }
+    return null;
+  }
+
+  void _showAchievementNotification(Achievement achievement) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(achievement.icon, color: Colors.amber),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '🏆 Nova Conquista!',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    achievement.title,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: achievement.color,
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentCategory = defaultCategories[_selectedCategoryIndex];
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('COMUNICA-TEA'),
-        backgroundColor: AppTheme.primaryColor,
+        title: const Text('Comunicação'),
+        backgroundColor: Theme.of(context).primaryColor,
         foregroundColor: Colors.white,
-        elevation: 2,
         actions: [
-          // Contador de Estrelas
-          ListenableBuilder(
-            listenable: _gamificationService,
-            builder: (context, child) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.star, color: Colors.amber, size: 28),
-                    const SizedBox(width: 4),
-                    Text(
+          // Mostrar estrelas
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.amber.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.amber),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.star, color: Colors.amber, size: 20),
+                const SizedBox(width: 4),
+                // Usando ListenableBuilder ao invés de ValueListenableBuilder
+                ListenableBuilder(
+                  listenable: _gamificationService,
+                  builder: (context, child) {
+                    return Text(
                       '${_gamificationService.progress.totalStars}',
                       style: const TextStyle(
-                        fontSize: 20,
+                        color: Colors.amber,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        fontSize: 16,
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
-              );
-            },
+              ],
+            ),
           ),
         ],
       ),
       body: Column(
         children: [
-          // Barra de frase
-          PhraseBar(
-            phrase: _fraseAtual,
-            isSpeaking: _isSpeaking,
-            onSpeak: _isSpeaking ? _pararFala : _falarFrase,
-            onClear: _limparFrase,
-            onRemoveLast: _removerUltimoPictograma,
-            isEnabled: _isTtsInitialized,
+          // Barra de frase atual
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.grey[200],
+            child: Column(
+              children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _fraseAtual.map((pictogram) {
+                      return Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(pictogram.icon, size: 20),
+                            const SizedBox(width: 4),
+                            Text(pictogram.label),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _falarFrase,
+                      icon: const Icon(Icons.volume_up),
+                      label: const Text('Falar'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      onPressed: _removerUltimoPictograma,
+                      icon: const Icon(Icons.backspace),
+                      color: Colors.red,
+                    ),
+                    IconButton(
+                      onPressed: _limparFrase,
+                      icon: const Icon(Icons.clear_all),
+                      color: Colors.orange,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
 
           // Abas de categorias
           Container(
-            height: 100,
+            height: 50,
             color: Colors.white,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: defaultCategories.length,
+              itemCount: defaultPictogramCategories.length, // Nome atualizado
               itemBuilder: (context, index) {
                 return CategoryTab(
-                  category: defaultCategories[index],
+                  category: defaultPictogramCategories[index], // Nome atualizado
                   isSelected: index == _selectedCategoryIndex,
                   onTap: () {
                     setState(() {
@@ -230,34 +246,36 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
             ),
           ),
 
-          // Grade de pictogramas
+          // Grid de pictogramas da categoria selecionada
           Expanded(
-            child: Container(
-              color: AppTheme.backgroundColor,
-              padding: const EdgeInsets.all(12),
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1,
-                ),
-                itemCount: currentCategory.pictograms.length,
-                itemBuilder: (context, index) {
-                  final pictogram = currentCategory.pictograms[index];
-                  return PictogramCard(
-                    pictogram: pictogram,
-                    categoryColor: currentCategory.color,
-                    size: _pictogramSize,
-                    onTap: () => _adicionarPictograma(pictogram.label),
-                    onLongPress: () => _falar(pictogram.label),
-                  );
-                },
+            child: GridView.builder(
+              padding: const EdgeInsets.all(8),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                childAspectRatio: 1,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
               ),
+              itemCount: defaultPictogramCategories[_selectedCategoryIndex].pictograms.length, // Nome atualizado
+              itemBuilder: (context, index) {
+                final pictogram = defaultPictogramCategories[_selectedCategoryIndex].pictograms[index]; // Nome atualizado
+                return PictogramCard(
+                  pictogram: pictogram,
+                  categoryColor: defaultPictogramCategories[_selectedCategoryIndex].color, // Adicionar esta linha
+                  onTap: () => _adicionarPictograma(pictogram),
+                );
+              },
             ),
           ),
         ],
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _gamificationService.removeAchievementListener(_onAchievementUnlocked);
+    _flutterTts.stop();
+    super.dispose();
   }
 }

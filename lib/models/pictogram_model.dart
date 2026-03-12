@@ -30,8 +30,8 @@ class Pictogram {
   });
 }
 
-// Dados padrão de categorias e pictogramas
-final List<PictogramCategory> defaultCategories = [
+// ✅ RENOMEADO para evitar conflito
+final List<PictogramCategory> defaultPictogramCategories = [
   PictogramCategory(
     id: 'needs',
     name: 'Necessidades',

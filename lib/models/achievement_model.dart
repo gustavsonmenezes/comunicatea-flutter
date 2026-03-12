@@ -1,3 +1,4 @@
+// models/achievement_model.dart
 import 'package:flutter/material.dart';
 
 class Achievement {
@@ -5,37 +6,58 @@ class Achievement {
   final String title;
   final String description;
   final IconData icon;
-  final int requiredStars; // Exemplo de critério simples
+  final int requiredStars;
+  final Color color;
 
-  Achievement({
+  const Achievement({
     required this.id,
     required this.title,
     required this.description,
     required this.icon,
-    this.requiredStars = 0,
+    required this.requiredStars,
+    required this.color,
   });
 }
 
-// Lista estática de conquistas do app
 final List<Achievement> appAchievements = [
   Achievement(
-    id: 'first_word',
-    title: 'Primeira Palavra',
-    description: 'Você falou sua primeira frase!',
-    icon: Icons.star,
-    requiredStars: 1,
+    id: 'first_steps',
+    title: 'Primeiros Passos',
+    description: 'Acumulou 5 estrelas',
+    icon: Icons.stars,
+    requiredStars: 5,
+    color: const Color(0xFF4A90E2),
   ),
   Achievement(
-    id: 'talkative',
-    title: 'Tagarela',
-    description: 'Você já falou 20 frases!',
-    icon: Icons.forum,
+    id: 'communicator',
+    title: 'Comunicador',
+    description: 'Acumulou 20 estrelas',
+    icon: Icons.chat,
     requiredStars: 20,
+    color: const Color(0xFF27AE60),
   ),
   Achievement(
     id: 'explorer',
     title: 'Explorador',
-    description: 'Usou pictogramas de 3 categorias diferentes.',
+    description: 'Acumulou 50 estrelas',
     icon: Icons.explore,
+    requiredStars: 50,
+    color: const Color(0xFFE74C3C),
+  ),
+  Achievement(
+    id: 'master',
+    title: 'Mestre da Comunicação',
+    description: 'Acumulou 100 estrelas',
+    icon: Icons.emoji_events,
+    requiredStars: 100,
+    color: const Color(0xFFF39C12),
+  ),
+  Achievement(
+    id: 'dedicated',
+    title: 'Dedicado',
+    description: 'Usou todas as categorias',
+    icon: Icons.category,
+    requiredStars: 0,
+    color: const Color(0xFF9B59B6),
   ),
 ];
