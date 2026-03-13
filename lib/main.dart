@@ -7,6 +7,7 @@ import 'features/auth/screens/login_screen.dart';
 import 'services/gamification_service.dart';
 import 'services/profile_service.dart';
 import 'services/auth_service.dart';
+// import 'services/settings_service.dart'; // COMENTADO TEMPORARIAMENTE
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +18,10 @@ void main() async {
 
   final profileService = ProfileService();
   await profileService.init();
+
+  // COMENTADO TEMPORARIAMENTE
+  // final settingsService = SettingsService();
+  // await settingsService.init();
 
   runApp(const ComunicaTeaApp());
 }
@@ -42,9 +47,6 @@ class ComunicaTeaApp extends StatelessWidget {
               ),
             );
           }
-
-          // Se snapshot.hasData for true, vai para Home
-          // Se não, vai para Login
           return snapshot.data ?? const LoginScreen();
         },
       ),
@@ -61,8 +63,6 @@ class ComunicaTeaApp extends StatelessWidget {
 
     if (authService.isLoggedIn) {
       print('✅ Usuário logado! Indo para Home');
-
-      // Se estiver logado e for criança, carregar progresso
       if (authService.isChild) {
         final childProfileId = authService.currentUser?.childProfileId;
         if (childProfileId != null) {
@@ -71,8 +71,7 @@ class ComunicaTeaApp extends StatelessWidget {
       }
       return const HomeScreen();
     }
-
     print('❌ Nenhum usuário logado. Indo para Login');
-    return null; // null faz o builder mostrar LoginScreen
+    return null;
   }
 }

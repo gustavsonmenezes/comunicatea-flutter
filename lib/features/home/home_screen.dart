@@ -1,251 +1,287 @@
-// features/home/home_screen.dart
+// features/home/home_screen.dart - VERSÃO CORRIGIDA E FUNCIONANDO
 import 'package:flutter/material.dart';
-import '../communication/communication_screen.dart';
-import '../settings/settings_screen.dart';
-import '../achievements/achievements_screen.dart';
 import '../../theme/app_theme.dart';
 import '../../services/profile_service.dart';
-import '../profiles/screens/profile_selection_screen.dart'; // PARA ESCOLHER PERFIL
-import '../profiles/screens/create_profile_screen.dart'; // PARA CRIAR PERFIL
+import '../../services/auth_service.dart';
+import '../profiles/screens/profile_selection_screen.dart';
+import '../profiles/screens/create_profile_screen.dart';
+import '../settings/settings_screen.dart';
+import '../achievements/achievements_screen.dart';
+import '../professional/professional_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
-  Future<void> _handleStartCommunication(BuildContext context) async {
+  Future<void> _navigateToCommunication(BuildContext context) async {
     final profileService = ProfileService();
 
     if (profileService.profiles.isEmpty) {
-      // Caso 1: Nenhum perfil criado ainda → vai direto para criar
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const CreateProfileScreen(),
-        ),
-      );
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CreateProfileScreen()),
+        );
+      }
     } else {
-      // Caso 2: Já existem perfis → mostra tela de seleção
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const ProfileSelectionScreen(),
-        ),
-      );
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ProfileSelectionScreen()),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
-        title: const Text('COMUNICA-TEA'),
+        title: const Text(
+          'COMUNICA-TEA',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.emoji_events, size: 28),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AchievementsScreen(),
-                ),
-              );
-            },
+            onPressed: () => _navigateToScreen(context, const AchievementsScreen()),
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              AppTheme.primaryLight,
-              AppTheme.backgroundColor,
-            ],
+      drawer: _buildDrawer(context),
+      body: _buildBody(context),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          const DrawerHeader(
+            decoration: BoxDecoration(color: Color(0xFF4A90E2)),
+            child: Text(
+              'Menu',
+              style: TextStyle(color: Colors.white, fontSize: 24),
+            ),
           ),
+          _buildDrawerTile(Icons.home, 'Home', () => Navigator.pop(context)),
+          _buildDrawerTile(Icons.person, 'Meu Perfil', () => _handleProfile(context)),
+          _buildDrawerTile(Icons.settings, 'Configurações',
+                  () => _navigateToScreen(context, const SettingsScreen())),
+          _buildDrawerTile(Icons.emoji_events, 'Conquistas',
+                  () => _navigateToScreen(context, const AchievementsScreen())),
+          const Divider(),
+          _buildDrawerTile(Icons.logout, 'Sair', _handleLogout, Colors.red),
+        ],
+      ),
+    );
+  }
+
+  // ✅ CORRIGIDO: Parâmetro 'textColor' ao invés de 'color'
+  Widget _buildDrawerTile(IconData icon, String title, VoidCallback onTap, [Color? textColor]) {
+    return ListTile(
+      leading: Icon(icon, color: textColor),
+      title: Text(title, style: textColor != null ? TextStyle(color: textColor) : null),
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFF8F9FF), Color(0xFFEFF2F8)],
         ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Logo
-                  Container(
-                    width: 160,
-                    height: 160,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primaryColor,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppTheme.primaryColor.withOpacity(0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
-                    ),
-                    child: ClipOval(
-                      child: Image.asset(
-                        'assets/images/logocomunicatea.jpeg',
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return const Icon(
-                            Icons.chat_bubble_outline,
-                            size: 90,
-                            color: Colors.white,
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 50),
+      ),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    _buildLogo(),
+                    const SizedBox(height: 32),
+                    _buildWelcomeText(),
+                    const SizedBox(height: 48),
+                    _buildMainButton(context),
+                    const SizedBox(height: 40),
+                    _buildQuickActions(context),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-                  // Título
-                  Text(
-                    'Bem-vindo ao',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: AppTheme.textSecondaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'COMUNICA-TEA',
-                    style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                      color: AppTheme.primaryColor,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Subtítulo
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Text(
-                      'Comunicação Aumentativa e Alternativa para crianças com Transtorno do Espectro Autista',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.textSecondaryColor,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 60),
-
-                  // Botão COMUNICAR (principal)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () => _handleStartCommunication(context),
-                        icon: const Icon(Icons.chat, size: 28),
-                        label: const Text(
-                          'COMEÇAR A COMUNICAR',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 4,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Botão Configurações
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const SettingsScreen(),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.settings, size: 24),
-                        label: const Text(
-                          'CONFIGURAÇÕES',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppTheme.primaryColor,
-                          side: const BorderSide(
-                            color: AppTheme.primaryColor,
-                            width: 2,
-                          ),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // Botão Sobre
-                  TextButton(
-                    onPressed: () {
-                      showAboutDialog(
-                        context: context,
-                        applicationName: 'COMUNICA-TEA',
-                        applicationVersion: '2.0.0',
-                        applicationIcon: ClipOval(
-                          child: Image.asset(
-                            'assets/images/logocomunicatea.jpeg',
-                            width: 50,
-                            height: 50,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return const Icon(
-                                Icons.chat_bubble_outline,
-                                size: 50,
-                                color: AppTheme.primaryColor,
-                              );
-                            },
-                          ),
-                        ),
-                        children: const [
-                          Padding(
-                            padding: EdgeInsets.all(16.0),
-                            child: Text(
-                              'Plataforma digital de Comunicação Aumentativa e Alternativa para crianças com Transtorno do Espectro Autista.\n\n'
-                                  'Desenvolvido por Gustavson Barros com foco em acessibilidade, inclusão e usabilidade.',
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                    child: Text(
-                      'Sobre o COMUNICA-TEA',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.textSecondaryColor,
-                      ),
-                    ),
-                  ),
-                ],
+  Widget _buildLogo() {
+    return Container(
+      width: 140,
+      height: 140,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryColor.withOpacity(0.2),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipOval(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+          ),
+          child: Image.asset(
+            'assets/images/logocomunicatea.jpeg',
+            fit: BoxFit.contain,
+            width: double.infinity,
+            height: double.infinity,
+            errorBuilder: (_, __, ___) => Container(
+              color: AppTheme.primaryColor.withOpacity(0.1),
+              child: const Icon(
+                Icons.chat,
+                size: 60,
+                color: Color(0xFF4A90E2),
               ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildWelcomeText() {
+    return const Column(
+      children: [
+        Text(
+          'COMUNICA-TEA',
+          style: TextStyle(
+            fontSize: 36,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF2C3E50),
+            letterSpacing: 1.5,
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          'Treine sua comunicação agora!',
+          style: TextStyle(
+            fontSize: 18,
+            color: Color(0xFF7F8C8D),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMainButton(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 64,
+      child: ElevatedButton.icon(
+        onPressed: () => _navigateToCommunication(context),
+        icon: const Icon(Icons.mic, size: 28),
+        label: const Text(
+          'INICIAR COMUNICAÇÃO',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppTheme.primaryColor,
+          foregroundColor: Colors.white,
+          elevation: 6,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+            child: _buildActionCard(
+                context,
+                Icons.emoji_events,
+                'Conquistas',
+                    () => _navigateToScreen(context, const AchievementsScreen())
+            )
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+            child: _buildActionCard(
+                context,
+                Icons.settings,
+                'Configurações',
+                    () => _navigateToScreen(context, const SettingsScreen())
+            )
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionCard(BuildContext context, IconData icon, String label, VoidCallback onTap) {
+    return Card(
+      elevation: 4,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 36, color: AppTheme.primaryColor),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2C3E50),
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _navigateToScreen(BuildContext context, Widget screen) {
+    if (context.mounted) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    }
+  }
+
+  void _handleProfile(BuildContext context) {
+    Navigator.pop(context);
+    final authService = AuthService();
+    final screen = authService.isProfessional
+        ? const ProfessionalScreen()
+        : const ProfileSelectionScreen();
+    _navigateToScreen(context, screen);
+  }
+
+  void _handleLogout() {
+    AuthService().logout();
+    // Navegação será tratada no widget pai ou via callback
   }
 }
