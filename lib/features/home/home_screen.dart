@@ -1,13 +1,18 @@
-// features/home/home_screen.dart - VERSÃO CORRIGIDA E FUNCIONANDO
+// features/home/home_screen.dart
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/profile_service.dart';
 import '../../services/auth_service.dart';
 import '../profiles/screens/profile_selection_screen.dart';
 import '../profiles/screens/create_profile_screen.dart';
+import '../profiles/screens/profile_management_screen.dart';
 import '../settings/settings_screen.dart';
 import '../achievements/achievements_screen.dart';
 import '../professional/professional_screen.dart';
+import '../stickers/screens/sticker_album_screen.dart';
+import '../../models/pictogram_model.dart';
+import '../memory_game/screens/memory_game_screen.dart';
+import '../memory_game/models/pictogram_adapter.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -29,6 +34,52 @@ class HomeScreen extends StatelessWidget {
           MaterialPageRoute(builder: (_) => const ProfileSelectionScreen()),
         );
       }
+    }
+  }
+
+  void _navigateToMemoryGame(BuildContext context) {
+    // Usando suas categorias reais
+    final categories = defaultPictogramCategories;
+
+    if (categories.length > 1) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Escolha uma categoria'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: categories.length,
+              itemBuilder: (context, index) {
+                final category = categories[index];
+                return ListTile(
+                  leading: Icon(category.icon, color: category.color),
+                  title: Text(category.name),
+                  onTap: () {
+                    Navigator.pop(context);
+
+                    // Converte os pictograms da categoria para MemoryPictogram
+                    final memoryPictograms = category.pictograms.map((p) {
+                      return MemoryPictogram.fromCategory(category, p);
+                    }).toList();
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MemoryGameScreen(
+                          category: category.name,
+                          pictograms: memoryPictograms,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ),
+      );
     }
   }
 
@@ -69,7 +120,26 @@ class HomeScreen extends StatelessWidget {
             ),
           ),
           _buildDrawerTile(Icons.home, 'Home', () => Navigator.pop(context)),
-          _buildDrawerTile(Icons.person, 'Meu Perfil', () => _handleProfile(context)),
+          _buildDrawerTile(Icons.people, 'Gerenciar Perfis', () {
+            Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const ProfileManagementScreen(),
+              ),
+            );
+          }),
+          _buildDrawerTile(Icons.album, 'Meu Álbum', () {
+            Navigator.pop(context);
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const StickerAlbumScreen()),
+            );
+          }),
+          _buildDrawerTile(Icons.sports_esports, 'Jogo da Memória', () {
+            Navigator.pop(context);
+            _navigateToMemoryGame(context);
+          }),
           _buildDrawerTile(Icons.settings, 'Configurações',
                   () => _navigateToScreen(context, const SettingsScreen())),
           _buildDrawerTile(Icons.emoji_events, 'Conquistas',
@@ -81,7 +151,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // ✅ CORRIGIDO: Parâmetro 'textColor' ao invés de 'color'
   Widget _buildDrawerTile(IconData icon, String title, VoidCallback onTap, [Color? textColor]) {
     return ListTile(
       leading: Icon(icon, color: textColor),
@@ -191,7 +260,7 @@ class HomeScreen extends StatelessWidget {
 
   Widget _buildMainButton(BuildContext context) {
     return SizedBox(
-      width: double.infinity,
+      width: double.maxFinite,
       height: 64,
       child: ElevatedButton.icon(
         onPressed: () => _navigateToCommunication(context),
@@ -282,6 +351,5 @@ class HomeScreen extends StatelessWidget {
 
   void _handleLogout() {
     AuthService().logout();
-    // Navegação será tratada no widget pai ou via callback
   }
 }

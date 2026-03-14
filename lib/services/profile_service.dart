@@ -153,26 +153,6 @@ class ProfileService extends ChangeNotifier {
     }
   }
 
-  Future<bool> deleteProfile(String profileId) async {
-    try {
-      _profiles.removeWhere((p) => p.id == profileId);
-
-      if (_currentProfile?.id == profileId) {
-        await logout();
-      }
-
-      await _saveProfiles();
-
-      await GamificationService().deleteProgressForProfile(profileId);
-
-      notifyListeners();
-      return true;
-    } catch (e) {
-      debugPrint('Erro ao excluir perfil: $e');
-      return false;
-    }
-  }
-
   Future<void> _saveProfiles() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -181,5 +161,15 @@ class ProfileService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Erro ao salvar perfis: $e');
     }
+  }
+
+  // ✅ MÉTODO ADICIONADO NO FINAL
+  Future<void> deleteProfile(String id) async {
+    await loadProfiles();
+    _profiles.removeWhere((p) => p.id == id);
+
+    final prefs = await SharedPreferences.getInstance();
+    final profilesJson = _profiles.map((p) => json.encode(p.toJson())).toList();
+    await prefs.setStringList('profiles', profilesJson);
   }
 }

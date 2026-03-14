@@ -15,6 +15,7 @@ dependencies:
   flutter_tts: ^4.1.0
   audioplayers: ^6.1.1
   shared_preferences: ^2.2.2
+  uuid: ^4.2.1
 
 dev_dependencies:
   flutter_test:
@@ -28,3 +29,9 @@ flutter:
     - assets/images/logocomunicatea.jpeg
     - assets/sounds/success.mp3
     - assets/sounds/error.mp3
+    - assets/images/pictograms/necessidades/
+    - assets/images/pictograms/sentimentos/
+    - assets/images/pictograms/acoes/
+    - assets/images/pictograms/pessoas/
+    - assets/images/pictograms/lugares/
+    - assets/images/pictograms/objetos/
