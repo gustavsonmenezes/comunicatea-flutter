@@ -1,9 +1,10 @@
-// lib/services/gamification_service.dart - VERSÃO CORRIGIDA PRONTA PARA COPIAR E COLAR
+// lib/services/gamification_service.dart - VERSÃO FINAL COM BANCO PRONTA PARA COPIAR E COLAR
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import '../models/user_progress_model.dart';
 import '../models/achievement_model.dart';
+import 'database_service.dart'; // ✅ ADICIONADO
 
 class GamificationService extends ChangeNotifier {
   // Singleton
@@ -15,6 +16,8 @@ class GamificationService extends ChangeNotifier {
   UserProgress get progress => _progress;
 
   String? _currentProfileId;
+  String? _currentChildId; // ✅ ADICIONADO
+  final DatabaseService _dbService = DatabaseService(); // ✅ ADICIONADO
 
   static const String _storageKeyPrefix = 'user_progress_';
 
@@ -23,6 +26,11 @@ class GamificationService extends ChangeNotifier {
   Future<void> initializeForProfile(String profileId) async {
     _currentProfileId = profileId;
     await loadProgressForProfile(profileId);
+  }
+
+  // ✅ NOVO MÉTODO
+  void setCurrentChild(String childId) {
+    _currentChildId = childId;
   }
 
   Future<void> loadProgressForProfile(String profileId) async {
@@ -53,6 +61,7 @@ class GamificationService extends ChangeNotifier {
     }
   }
 
+  // ✅ MODIFICADO - salva no banco
   Future<void> addStar() async {
     if (_currentProfileId == null) return;
 
@@ -68,8 +77,14 @@ class GamificationService extends ChangeNotifier {
         listener(achievement);
       }
     }
+
+    // Salvar no banco ✅
+    if (_currentChildId != null) {
+      await _dbService.updateChildProgress(_currentChildId!, _progress);
+    }
   }
 
+  // ✅ MODIFICADO - salva no banco
   Future<void> registerCategoryUsage(String categoryId) async {
     if (_currentProfileId == null) return;
 
@@ -95,6 +110,11 @@ class GamificationService extends ChangeNotifier {
 
     await _save();
     notifyListeners();
+
+    // Salvar no banco ✅
+    if (_currentChildId != null) {
+      await _dbService.updateChildProgress(_currentChildId!, _progress);
+    }
   }
 
   List<Achievement> _checkAndUnlockAchievements() {
