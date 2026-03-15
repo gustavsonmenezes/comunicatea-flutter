@@ -1,4 +1,4 @@
-// features/home/home_screen.dart
+// lib/features/home/home_screen.dart - VERSÃO FINAL CORRIGIDA PRONTA PARA COPIAR E COLAR
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../services/profile_service.dart';
@@ -8,7 +8,8 @@ import '../profiles/screens/create_profile_screen.dart';
 import '../profiles/screens/profile_management_screen.dart';
 import '../settings/settings_screen.dart';
 import '../achievements/achievements_screen.dart';
-import '../professional/professional_screen.dart';
+// import '../professional/professional_screen.dart'; // REMOVIDO
+// import '../professional/screens/professional_dashboard_screen.dart'; // REMOVIDO
 import '../stickers/screens/sticker_album_screen.dart';
 import '../../models/pictogram_model.dart';
 import '../memory_game/screens/memory_game_screen.dart';
@@ -38,7 +39,6 @@ class HomeScreen extends StatelessWidget {
   }
 
   void _navigateToMemoryGame(BuildContext context) {
-    // Usando suas categorias reais
     final categories = defaultPictogramCategories;
 
     if (categories.length > 1) {
@@ -58,8 +58,6 @@ class HomeScreen extends StatelessWidget {
                   title: Text(category.name),
                   onTap: () {
                     Navigator.pop(context);
-
-                    // Converte os pictograms da categoria para MemoryPictogram
                     final memoryPictograms = category.pictograms.map((p) {
                       return MemoryPictogram.fromCategory(category, p);
                     }).toList();
@@ -280,24 +278,41 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildQuickActions(BuildContext context) {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-            child: _buildActionCard(
-                context,
-                Icons.emoji_events,
-                'Conquistas',
-                    () => _navigateToScreen(context, const AchievementsScreen())
-            )
+        Row(
+          children: [
+            Expanded(
+                child: _buildActionCard(
+                    context,
+                    Icons.emoji_events,
+                    'Conquistas',
+                        () => _navigateToScreen(context, const AchievementsScreen())
+                )
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+                child: _buildActionCard(
+                    context,
+                    Icons.settings,
+                    'Configurações',
+                        () => _navigateToScreen(context, const SettingsScreen())
+                )
+            ),
+          ],
         ),
-        const SizedBox(width: 16),
-        Expanded(
-            child: _buildActionCard(
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionCard(
                 context,
-                Icons.settings,
-                'Configurações',
-                    () => _navigateToScreen(context, const SettingsScreen())
-            )
+                Icons.verified_user,
+                'Profissional (TESTE)',
+                    () => Navigator.pushNamed(context, '/professional-dashboard'),
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -342,11 +357,8 @@ class HomeScreen extends StatelessWidget {
 
   void _handleProfile(BuildContext context) {
     Navigator.pop(context);
-    final authService = AuthService();
-    final screen = authService.isProfessional
-        ? const ProfessionalScreen()
-        : const ProfileSelectionScreen();
-    _navigateToScreen(context, screen);
+    // CORRIGIDO - removido ProfessionalScreen inexistente
+    _navigateToScreen(context, const ProfileSelectionScreen());
   }
 
   void _handleLogout() {

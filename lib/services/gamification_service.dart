@@ -1,4 +1,4 @@
-// services/gamification_service.dart
+// lib/services/gamification_service.dart - VERSÃO CORRIGIDA PRONTA PARA COPIAR E COLAR
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +11,7 @@ class GamificationService extends ChangeNotifier {
   factory GamificationService() => _instance;
   GamificationService._internal();
 
-  UserProgress _progress = UserProgress();
+  UserProgress _progress = UserProgress(userId: 'temp_user');
   UserProgress get progress => _progress;
 
   String? _currentProfileId;
@@ -33,14 +33,14 @@ class GamificationService extends ChangeNotifier {
       if (data != null) {
         _progress = UserProgress.fromJson(jsonDecode(data));
       } else {
-        _progress = UserProgress();
+        _progress = UserProgress(userId: profileId);
       }
 
       _currentProfileId = profileId;
       notifyListeners();
     } catch (e) {
       debugPrint('Erro ao carregar progresso do perfil $profileId: $e');
-      _progress = UserProgress();
+      _progress = UserProgress(userId: profileId);
     }
   }
 
@@ -135,7 +135,7 @@ class GamificationService extends ChangeNotifier {
   }
 
   Future<void> resetProgress() async {
-    _progress = UserProgress();
+    _progress = UserProgress(userId: _currentProfileId ?? 'temp_user');
     await _save();
     notifyListeners();
   }

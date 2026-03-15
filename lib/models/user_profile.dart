@@ -6,11 +6,6 @@ class UserProgress {
   final List<DateTime> activeDays;
   final List<Session> recentSessions;
 
-  // Campos para gamificação (seus campos existentes)
-  int totalStars;
-  Map<String, int> categoryUsage;
-  List<String> unlockedAchievementIds;
-
   UserProgress({
     required this.userId,
     this.totalSessions = 0,
@@ -18,9 +13,6 @@ class UserProgress {
     this.pictogramUsage = const {},
     this.activeDays = const [],
     this.recentSessions = const [],
-    this.totalStars = 0,
-    this.categoryUsage = const {},
-    this.unlockedAchievementIds = const [],
   });
 
   Map<DateTime, int> get weeklyUsage {
@@ -34,6 +26,7 @@ class UserProgress {
         usage[day] = (usage[day] ?? 0) + 1;
       }
     }
+
     return usage;
   }
 
@@ -51,9 +44,6 @@ class UserProgress {
           ?.map((s) => Session.fromJson(s))
           .toList() ??
           [],
-      totalStars: json['totalStars'] ?? 0,
-      categoryUsage: Map<String, int>.from(json['categoryUsage'] ?? {}),
-      unlockedAchievementIds: List<String>.from(json['unlockedAchievementIds'] ?? []),
     );
   }
 
@@ -65,9 +55,6 @@ class UserProgress {
       'pictogramUsage': pictogramUsage,
       'activeDays': activeDays.map((d) => d.toIso8601String()).toList(),
       'recentSessions': recentSessions.map((s) => s.toJson()).toList(),
-      'totalStars': totalStars,
-      'categoryUsage': categoryUsage,
-      'unlockedAchievementIds': unlockedAchievementIds,
     };
   }
 }
