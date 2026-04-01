@@ -69,6 +69,12 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     });
   }
 
+  void _removerPictogramaNoIndice(int index) {
+    setState(() {
+      _fraseAtual.removeAt(index);
+    });
+  }
+
   Future<void> _falarFrase() async {
     if (_fraseAtual.isNotEmpty) {
       String fraseCompleta = _fraseAtual.map((p) => p.label).join(' ');
@@ -186,36 +192,60 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
-                    children: _fraseAtual.map((pictogram) {
-                      return Container(
-                        margin: const EdgeInsets.only(right: 8),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: Row(
-                          children: [
-                            // 🖼️ MINIATURA DA IMAGEM OU ÍCONE 🖼️
-                            SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: pictogram.assetPath != null
-                                  ? Image.asset(
-                                pictogram.assetPath!,
-                                fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Icon(pictogram.icon, size: 20),
-                              )
-                                  : Icon(pictogram.icon, size: 20),
-                            ),
-                            const SizedBox(width: 4),
-                            Text(pictogram.label),
-                          ],
+                    children: List.generate(_fraseAtual.length, (index) {
+                      final pictogram = _fraseAtual[index];
+                      return GestureDetector(
+                        onTap: () => _removerPictogramaNoIndice(index),
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.red.withOpacity(0.2)),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Row(
+                                children: [
+                                  SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: pictogram.assetPath != null
+                                        ? Image.asset(
+                                      pictogram.assetPath!,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (context, error, stackTrace) =>
+                                          Icon(pictogram.icon, size: 20),
+                                    )
+                                        : Icon(pictogram.icon, size: 20),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(pictogram.label),
+                                ],
+                              ),
+                              Positioned(
+                                top: -12,
+                                right: -12,
+                                child: Icon(
+                                  Icons.remove_circle,
+                                  color: Colors.red.withOpacity(0.7),
+                                  size: 16,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       );
-                    }).toList(),
+                    }),
                   ),
                 ),
                 const SizedBox(height: 8),
