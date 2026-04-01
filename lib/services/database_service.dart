@@ -1,7 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
-import 'package:flutter/material.dart'; // ← ADICIONADO para debugPrint
+import 'package:flutter/material.dart';
 import '../models/child_profile.dart';
 import '../models/user_progress_model.dart';
 import '../models/profile_settings_model.dart';
@@ -24,8 +24,9 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -81,6 +82,38 @@ class DatabaseService {
         FOREIGN KEY (childId) REFERENCES children(id) ON DELETE CASCADE
       )
     ''');
+
+    // 🔽 TABELA DE LOGS DE FALA 🔽
+    await db.execute('''
+      CREATE TABLE speech_logs(
+        id TEXT PRIMARY KEY,
+        pictogram_id TEXT NOT NULL,
+        target_word TEXT NOT NULL,
+        recognized_words TEXT,
+        is_success INTEGER NOT NULL,
+        confidence REAL,
+        timestamp TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    debugPrint('🔄 Atualizando banco de dados de versão $oldVersion para $newVersion');
+
+    if (oldVersion < 2) {
+      debugPrint('➕ Criando tabela speech_logs');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS speech_logs(
+          id TEXT PRIMARY KEY,
+          pictogram_id TEXT NOT NULL,
+          target_word TEXT NOT NULL,
+          recognized_words TEXT,
+          is_success INTEGER NOT NULL,
+          confidence REAL,
+          timestamp TEXT NOT NULL
+        )
+      ''');
+    }
   }
 
   // ==================== MÉTODOS PRINCIPAIS ====================
@@ -201,7 +234,7 @@ class DatabaseService {
           diagnosis: row['diagnosis']?.toString(),
           photoUrl: row['photoUrl']?.toString(),
           responsibleId: row['responsibleId']?.toString(),
-          professionalIds: [], // Será preenchido depois se necessário
+          professionalIds: [],
           settings: settings,
           progress: progress,
           lastActive: DateTime.parse(row['lastActive']?.toString() ?? DateTime.now().toIso8601String()),

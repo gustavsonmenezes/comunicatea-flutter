@@ -28,6 +28,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: ListView(
         children: [
+          // 🔽 BOTÃO DE ESTATÍSTICAS DE FALA 🔽
+          Card(
+            margin: const EdgeInsets.all(16),
+            child: ListTile(
+              leading: const Icon(Icons.analytics, color: AppTheme.primaryColor),
+              title: const Text('Estatísticas de Fala'),
+              subtitle: const Text('Veja o progresso da criança'),
+              trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+              onTap: () {
+                Navigator.pushNamed(context, '/speech_stats');
+              },
+            ),
+          ),
+
           Card(
             margin: const EdgeInsets.all(16),
             child: SwitchListTile(

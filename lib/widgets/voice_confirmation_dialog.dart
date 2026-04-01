@@ -4,6 +4,8 @@ import '../models/pictogram_model.dart';
 import '../services/speech_recognition_service.dart';
 import '../services/sound_manager.dart';
 import '../services/gamification_service.dart';
+import '../services/speech_log_service.dart';
+import '../models/speech_log_model.dart';
 
 class VoiceConfirmationDialog extends StatefulWidget {
   final Pictogram pictogram;
@@ -18,6 +20,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   final SpeechRecognitionService _speechService = SpeechRecognitionService();
   final GamificationService _gamificationService = GamificationService();
   final FlutterTts _flutterTts = FlutterTts();
+  final SpeechLogService _logService = SpeechLogService();
 
   late AnimationController _animationController;
   bool _isSuccess = false;
@@ -25,6 +28,22 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   bool _isListening = false;
   bool _hasPlayedAudio = false;
   bool _showNotUnderstood = false;
+  double _currentConfidence = 0.0;
+  String _currentRecognized = '';
+
+  // Dicionário de palavras alternativas para cada pictograma
+  final Map<String, List<String>> _alternativeWords = {
+    'água': ['agua', 'awa', 'águ', 'aagua'],
+    'comida': ['comida', 'comer', 'come', 'comid', 'cumida'],
+    'banheiro': ['banheiro', 'banheiro', 'banhe', 'banhero', 'banheiru'],
+    'feliz': ['feliz', 'feliz', 'fliz', 'felis'],
+    'triste': ['triste', 'trist', 'trishte', 'tristi'],
+    'brincar': ['brincar', 'brinca', 'brincá', 'brincar'],
+    'dormir': ['dormir', 'dormi', 'dorme', 'dormir'],
+    'mamãe': ['mamae', 'mama', 'mamãe', 'mamai'],
+    'papai': ['papai', 'papa', 'papae', 'papay'],
+    'ajuda': ['ajuda', 'ajudar', 'ajuda', 'ajuda'],
+  };
 
   @override
   void initState() {
@@ -33,7 +52,6 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
-
     _initAndPlayAudio();
   }
 
@@ -48,10 +66,8 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   Future<void> _initAndPlayAudio() async {
     await _flutterTts.setLanguage("pt-BR");
     await _flutterTts.setSpeechRate(0.5);
-
     await _flutterTts.speak(widget.pictogram.label);
     _hasPlayedAudio = true;
-
     await Future.delayed(const Duration(milliseconds: 500));
     setState(() {});
   }
@@ -59,6 +75,8 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   void _startListening() async {
     setState(() {
       _isListening = true;
+      _currentConfidence = 0.0;
+      _currentRecognized = '';
       _animationController.repeat(reverse: true);
     });
 
@@ -66,6 +84,10 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     if (_speechService.isAvailable) {
       _speechService.startListening(
           onResult: (words) {
+            setState(() {
+              _currentRecognized = words;
+              _currentConfidence = _speechService.confidence;
+            });
             _checkMatch(words);
           }
       );
@@ -78,13 +100,60 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     }
   }
 
+  // Calcula similaridade entre duas strings (algoritmo de Levenshtein)
+  int _levenshteinDistance(String s1, String s2) {
+    s1 = s1.toLowerCase();
+    s2 = s2.toLowerCase();
+
+    if (s1 == s2) return 0;
+    if (s1.isEmpty) return s2.length;
+    if (s2.isEmpty) return s1.length;
+
+    List<List<int>> matrix = List.generate(
+      s1.length + 1,
+          (i) => List.filled(s2.length + 1, 0),
+    );
+
+    for (int i = 0; i <= s1.length; i++) matrix[i][0] = i;
+    for (int j = 0; j <= s2.length; j++) matrix[0][j] = j;
+
+    for (int i = 1; i <= s1.length; i++) {
+      for (int j = 1; j <= s2.length; j++) {
+        int cost = (s1[i - 1] == s2[j - 1]) ? 0 : 1;
+        matrix[i][j] = [
+          matrix[i - 1][j] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j - 1] + cost,
+        ].reduce((a, b) => a < b ? a : b);
+      }
+    }
+    return matrix[s1.length][s2.length];
+  }
+
+  bool _isSimilar(String word1, String word2, {int maxDistance = 2}) {
+    if (word1.isEmpty || word2.isEmpty) return false;
+
+    final clean1 = _removeAccents(word1);
+    final clean2 = _removeAccents(word2);
+
+    int distance = _levenshteinDistance(clean1, clean2);
+
+    int maxLen = clean1.length > clean2.length ? clean1.length : clean2.length;
+
+    double similarity = 1.0 - (distance / maxLen);
+
+    print('📊 Similaridade: "$clean1" vs "$clean2" = ${(similarity * 100).toStringAsFixed(0)}%');
+
+    return similarity >= 0.7 || distance <= maxDistance;
+  }
+
   void _checkMatch(String spokenWords) {
     if (_isSuccess || _isFailed) return;
 
     final targetWord = widget.pictogram.label.toLowerCase().trim();
     final recognized = spokenWords.toLowerCase().trim();
 
-    print('🎤 Reconhecido: "$recognized" | Alvo: "$targetWord"');
+    print('🎤 Reconhecido: "$recognized" | Alvo: "$targetWord" | Confiança: ${(_currentConfidence * 100).toStringAsFixed(0)}%');
 
     bool isMatch = false;
 
@@ -93,39 +162,42 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
       isMatch = true;
       print('✅ Match exato');
     }
-    // 2. Reconhecido contém a palavra alvo
-    else if (recognized.contains(targetWord)) {
+    // 2. Confiança alta (> 80%)
+    else if (_currentConfidence > 0.8) {
       isMatch = true;
-      print('✅ Reconhecido contém alvo');
+      print('✅ Confiança alta: ${(_currentConfidence * 100).toStringAsFixed(0)}%');
     }
-    // 3. Palavra alvo contém o reconhecido (para palavras curtas)
-    else if (targetWord.contains(recognized) && recognized.length >= 2) {
-      isMatch = true;
-      print('✅ Alvo contém reconhecido');
-    }
-    // 4. Similaridade sem acentos
+    // 3. Palavras alternativas do dicionário
     else {
-      final normalizedTarget = _removeAccents(targetWord);
-      final normalizedRecognized = _removeAccents(recognized);
-
-      if (normalizedRecognized.contains(normalizedTarget) ||
-          normalizedTarget.contains(normalizedRecognized) && normalizedRecognized.length >= 2) {
-        isMatch = true;
-        print('✅ Match sem acentos');
+      final alternatives = _alternativeWords[targetWord] ?? [];
+      for (var alt in alternatives) {
+        if (recognized.contains(alt) || alt.contains(recognized)) {
+          isMatch = true;
+          print('✅ Match por dicionário: "$alt"');
+          break;
+        }
       }
     }
 
-    // 5. Verifica palavra por palavra (ex: "quero água" vs "água")
+    // 4. Similaridade fonética (algoritmo de Levenshtein)
     if (!isMatch) {
       final recognizedWords = recognized.split(' ');
       for (var word in recognizedWords) {
-        final cleanWord = _removeAccents(word);
-        final cleanTarget = _removeAccents(targetWord);
-        if (cleanWord.contains(cleanTarget) || cleanTarget.contains(cleanWord)) {
+        if (word.length >= 2 && _isSimilar(word, targetWord)) {
           isMatch = true;
-          print('✅ Match por palavra separada: "$word"');
+          print('✅ Match por similaridade fonética: "$word" ~ "$targetWord"');
           break;
         }
+      }
+    }
+
+    // 5. Contém a palavra (com tolerância)
+    if (!isMatch) {
+      final cleanTarget = _removeAccents(targetWord);
+      final cleanRecognized = _removeAccents(recognized);
+      if (cleanRecognized.contains(cleanTarget)) {
+        isMatch = true;
+        print('✅ Match por contém (sem acentos)');
       }
     }
 
@@ -165,6 +237,15 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     _speechService.stopListening();
     _animationController.stop();
 
+    // 🔽 SALVAR LOG DE SUCESSO 🔽
+    await _logService.saveLog(SpeechLog(
+      pictogramId: widget.pictogram.id,
+      targetWord: widget.pictogram.label,
+      recognizedWords: _currentRecognized,
+      isSuccess: true,
+      confidence: _currentConfidence,
+    ));
+
     await SoundManager().playSuccess();
     await _gamificationService.addStar();
 
@@ -179,7 +260,28 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     _speechService.stopListening();
     _animationController.stop();
 
+    // 🔽 SALVAR LOG DE PULAR (considerar como falha) 🔽
+    await _logService.saveLog(SpeechLog(
+      pictogramId: widget.pictogram.id,
+      targetWord: widget.pictogram.label,
+      recognizedWords: 'pular',
+      isSuccess: false,
+      confidence: 0.0,
+    ));
+
     Navigator.of(context).pop(true);
+  }
+
+  void _handleCancel() async {
+    // 🔽 SALVAR LOG DE CANCELAMENTO (considerar como falha) 🔽
+    await _logService.saveLog(SpeechLog(
+      pictogramId: widget.pictogram.id,
+      targetWord: widget.pictogram.label,
+      recognizedWords: _currentRecognized.isEmpty ? 'cancelado' : _currentRecognized,
+      isSuccess: false,
+      confidence: _currentConfidence,
+    ));
+    Navigator.of(context).pop(false);
   }
 
   void _replayAudio() async {
@@ -271,12 +373,47 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
                       return Column(
                         children: [
                           Text(
-                            _speechService.lastWords.isEmpty
+                            _currentRecognized.isEmpty
                                 ? 'Ouvindo...'
-                                : '"${_speechService.lastWords}"',
+                                : '"$_currentRecognized"',
                             style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
                             textAlign: TextAlign.center,
                           ),
+                          if (_currentConfidence > 0)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    width: 100,
+                                    height: 4,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[300],
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                    child: FractionallySizedBox(
+                                      widthFactor: _currentConfidence,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: _currentConfidence > 0.7 ? Colors.green : Colors.orange,
+                                          borderRadius: BorderRadius.circular(2),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '${(_currentConfidence * 100).toStringAsFixed(0)}%',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: _currentConfidence > 0.7 ? Colors.green : Colors.orange,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           if (_showNotUnderstood)
                             Padding(
                               padding: const EdgeInsets.only(top: 8.0),
@@ -335,7 +472,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
             const SizedBox(height: 8),
 
             TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
+              onPressed: _handleCancel,
               child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
             ),
           ],

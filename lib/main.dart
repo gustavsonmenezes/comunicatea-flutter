@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/home/home_screen.dart';
-import 'features/professional/screens/professional_dashboard_screen.dart'; // Nome corrigido
+import 'features/professional/screens/professional_dashboard_screen.dart';
+import 'features/settings/speech_stats_screen.dart';
+
 
 void main() {
   runApp(const ComunicaTeaApp());
@@ -25,7 +27,8 @@ class ComunicaTeaApp extends StatelessWidget {
         '/': (context) => const SplashScreen(),
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const HomeScreen(),
-        '/professional-dashboard': (context) => const ProfessionalDashboardScreen(), // Nome corrigido
+        '/professional-dashboard': (context) => const ProfessionalDashboardScreen(),
+        '/speech_stats': (context) => const SpeechStatsScreen(),
       },
     );
   }
