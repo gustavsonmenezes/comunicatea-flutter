@@ -6,7 +6,8 @@ import '../../widgets/pictogram_card.dart';
 import '../../widgets/category_tab.dart';
 import '../../services/gamification_service.dart';
 import '../../models/achievement_model.dart';
-import '../../models/user_progress_model.dart'; // Adicionar este import
+import '../../models/user_progress_model.dart';
+import '../../widgets/voice_confirmation_dialog.dart'; // 🔽 NOVO IMPORT 🔽
 
 class CommunicationScreen extends StatefulWidget {
   const CommunicationScreen({super.key});
@@ -38,10 +39,21 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     await _flutterTts.setSpeechRate(0.5);
   }
 
-  void _adicionarPictograma(Pictogram pictogram) {
-    setState(() {
-      _fraseAtual.add(pictogram);
-    });
+  // 🔽 MÉTODO MODIFICADO - AGORA COM RECONHECIMENTO DE VOZ 🔽
+  void _adicionarPictograma(Pictogram pictogram) async {
+    // Exibe o diálogo de reconhecimento de voz
+    final bool? success = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => VoiceConfirmationDialog(pictogram: pictogram),
+    );
+
+    // Se a criança falou a palavra corretamente, adiciona à frase
+    if (success == true) {
+      setState(() {
+        _fraseAtual.add(pictogram);
+      });
+    }
   }
 
   void _removerUltimoPictograma() {
@@ -79,7 +91,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   }
 
   String? _getCategoryForPictogram(String pictogramId) {
-    for (var category in defaultPictogramCategories) { // Nome atualizado
+    for (var category in defaultPictogramCategories) {
       if (category.pictograms.any((p) => p.id == pictogramId)) {
         return category.id;
       }
@@ -146,7 +158,6 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
               children: [
                 const Icon(Icons.star, color: Colors.amber, size: 20),
                 const SizedBox(width: 4),
-                // Usando ListenableBuilder ao invés de ValueListenableBuilder
                 ListenableBuilder(
                   listenable: _gamificationService,
                   builder: (context, child) {
@@ -231,10 +242,10 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
             color: Colors.white,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              itemCount: defaultPictogramCategories.length, // Nome atualizado
+              itemCount: defaultPictogramCategories.length,
               itemBuilder: (context, index) {
                 return CategoryTab(
-                  category: defaultPictogramCategories[index], // Nome atualizado
+                  category: defaultPictogramCategories[index],
                   isSelected: index == _selectedCategoryIndex,
                   onTap: () {
                     setState(() {
@@ -256,12 +267,12 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 8,
               ),
-              itemCount: defaultPictogramCategories[_selectedCategoryIndex].pictograms.length, // Nome atualizado
+              itemCount: defaultPictogramCategories[_selectedCategoryIndex].pictograms.length,
               itemBuilder: (context, index) {
-                final pictogram = defaultPictogramCategories[_selectedCategoryIndex].pictograms[index]; // Nome atualizado
+                final pictogram = defaultPictogramCategories[_selectedCategoryIndex].pictograms[index];
                 return PictogramCard(
                   pictogram: pictogram,
-                  categoryColor: defaultPictogramCategories[_selectedCategoryIndex].color, // Adicionar esta linha
+                  categoryColor: defaultPictogramCategories[_selectedCategoryIndex].color,
                   onTap: () => _adicionarPictograma(pictogram),
                 );
               },

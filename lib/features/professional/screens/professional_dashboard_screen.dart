@@ -3,8 +3,9 @@ import 'package:provider/provider.dart';
 import '../providers/professional_provider.dart';
 import '../widgets/child_card.dart';
 import 'child_details_screen.dart';
-// Adicione este import se não tiver
 import '../../../models/child_profile.dart';
+import '../../../models/profile_settings_model.dart';
+import '../../../models/user_progress_model.dart';
 
 class ProfessionalDashboardScreen extends StatelessWidget {
   const ProfessionalDashboardScreen({Key? key}) : super(key: key);
@@ -25,7 +26,7 @@ class ProfessionalDashboardScreen extends StatelessWidget {
               foregroundColor: Colors.white,
               elevation: 0,
               actions: [
-                _buildNotificationIcon(context, provider), // Passando context
+                _buildNotificationIcon(context, provider),
               ],
             ),
             body: provider.isLoading
@@ -101,21 +102,9 @@ class ProfessionalDashboardScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildStatItem(
-            'Crianças',
-            '${provider.totalChildren}',
-            Icons.people,
-          ),
-          _buildStatItem(
-            'Ativas Hoje',
-            '${provider.activeToday}',
-            Icons.today,
-          ),
-          _buildStatItem(
-            'Alertas',
-            '${provider.totalAlerts}',
-            Icons.warning_amber,
-          ),
+          _buildStatItem('Crianças', '${provider.totalChildren}', Icons.people),
+          _buildStatItem('Ativas Hoje', '${provider.activeToday}', Icons.today),
+          _buildStatItem('Alertas', '${provider.totalAlerts}', Icons.warning_amber),
         ],
       ),
     );
@@ -167,18 +156,12 @@ class ProfessionalDashboardScreen extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 'Nenhuma criança cadastrada',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[600],
-                ),
+                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
               ),
               const SizedBox(height: 8),
               Text(
                 'Toque no botão + para adicionar',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[500],
-                ),
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
               ),
             ],
           ),
@@ -293,54 +276,166 @@ class ProfessionalDashboardScreen extends StatelessWidget {
   void _showAddChildDialog(BuildContext context, ProfessionalProvider provider) {
     final nameController = TextEditingController();
     final ageController = TextEditingController();
+    final diagnosisController = TextEditingController();
+    bool isLoading = false;
+
+    // Verifica se há profissional logado ANTES de abrir o diálogo
+    if (provider.currentProfessional == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Erro: Profissional não está logado'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Adicionar Nova Criança'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Nome da criança',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.person),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Adicionar Nova Criança'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome da criança *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: ageController,
+                  decoration: const InputDecoration(
+                    labelText: 'Idade *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.calendar_today),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: diagnosisController,
+                  decoration: const InputDecoration(
+                    labelText: 'Diagnóstico (opcional)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.medical_services),
+                  ),
+                ),
+                if (isLoading) const Padding(
+                  padding: EdgeInsets.only(top: 16),
+                  child: CircularProgressIndicator(),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Cancelar'),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ageController,
-              decoration: const InputDecoration(
-                labelText: 'Idade',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.calendar_today),
+              ElevatedButton(
+                onPressed: isLoading
+                    ? null
+                    : () async {
+                  // Validações
+                  final name = nameController.text.trim();
+                  if (name.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Por favor, insira o nome da criança'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  final ageText = ageController.text.trim();
+                  if (ageText.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Por favor, insira a idade'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  final age = int.tryParse(ageText);
+                  if (age == null || age <= 0 || age > 18) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Por favor, insira uma idade válida (1-18)'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  setState(() => isLoading = true);
+
+                  try {
+                    final childId = DateTime.now().millisecondsSinceEpoch.toString();
+                    final newChild = ChildProfile(
+                      id: childId,
+                      name: name,
+                      age: age,
+                      diagnosis: diagnosisController.text.trim().isEmpty
+                          ? null
+                          : diagnosisController.text.trim(),
+                      photoUrl: null,
+                      responsibleId: null,
+                      professionalIds: [provider.currentProfessional!.id],
+                      settings: ProfileSettings(
+                        voiceRate: 0.5,
+                        voicePitch: 1.0,
+                        highContrast: false,
+                        selectedVoice: 'pt-BR',
+                      ),
+                      progress: UserProgress(
+                        userId: childId,
+                        totalSessions: 0,
+                        totalPhrasesBuilt: 0,
+                        activeDays: [],
+                        pictogramUsage: {},
+                      ),
+                      lastActive: DateTime.now(),
+                      createdAt: DateTime.now(),
+                    );
+
+                    await provider.addChild(newChild);
+
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('$name cadastrado com sucesso!'),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    setState(() => isLoading = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Erro ao cadastrar: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue[800],
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Adicionar'),
               ),
-              keyboardType: TextInputType.number,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              // Implementar lógica para salvar
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Funcionalidade em desenvolvimento')),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[800],
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Adicionar'),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
