@@ -10,8 +10,10 @@
 
 ## 📋 Sobre o Projeto
 Projeto de extensão - IFPE Campus Palmares
+```bash
 Professor Ricson Santana (ricson.santana@palmares.ifpe.edu.br)
 Aluno: Gustavson Menezes (gmb6@discente.ifpe.edu.br)
+```
 
 O COMUNICA-TEA é uma aplicação mobile desenvolvida em Flutter que visa auxiliar crianças com Transtorno do Espectro Autista (TEA) na comunicação através de **pictogramas interativos** e **síntese de voz**.
 
