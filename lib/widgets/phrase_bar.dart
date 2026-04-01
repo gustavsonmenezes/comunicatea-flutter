@@ -134,7 +134,7 @@ class PhraseBar extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: isEnabled && phrase.isNotEmpty
                       ? () {
-                    SoundManager().playError(); // Som de alerta ao limpar tudo
+                    SoundManager().playError();
                     onClear();
                   }
                       : null,
