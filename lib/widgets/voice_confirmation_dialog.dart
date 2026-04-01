@@ -69,7 +69,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     await _flutterTts.speak(widget.pictogram.label);
     _hasPlayedAudio = true;
     await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   void _startListening() async {
@@ -84,19 +84,23 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     if (_speechService.isAvailable) {
       _speechService.startListening(
           onResult: (words) {
-            setState(() {
-              _currentRecognized = words;
-              _currentConfidence = _speechService.confidence;
-            });
-            _checkMatch(words);
+            if (mounted) {
+              setState(() {
+                _currentRecognized = words;
+                _currentConfidence = _speechService.confidence;
+              });
+              _checkMatch(words);
+            }
           }
       );
     } else {
-      setState(() {
-        _isFailed = true;
-        _isListening = false;
-        _animationController.stop();
-      });
+      if (mounted) {
+        setState(() {
+          _isFailed = true;
+          _isListening = false;
+          _animationController.stop();
+        });
+      }
     }
   }
 
@@ -142,7 +146,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
 
     double similarity = 1.0 - (distance / maxLen);
 
-    print('📊 Similaridade: "$clean1" vs "$clean2" = ${(similarity * 100).toStringAsFixed(0)}%');
+    debugPrint('📊 Similaridade: "$clean1" vs "$clean2" = ${(similarity * 100).toStringAsFixed(0)}%');
 
     return similarity >= 0.7 || distance <= maxDistance;
   }
@@ -153,19 +157,19 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     final targetWord = widget.pictogram.label.toLowerCase().trim();
     final recognized = spokenWords.toLowerCase().trim();
 
-    print('🎤 Reconhecido: "$recognized" | Alvo: "$targetWord" | Confiança: ${(_currentConfidence * 100).toStringAsFixed(0)}%');
+    debugPrint('🎤 Reconhecido: "$recognized" | Alvo: "$targetWord" | Confiança: ${(_currentConfidence * 100).toStringAsFixed(0)}%');
 
     bool isMatch = false;
 
     // 1. Match exato
     if (recognized == targetWord) {
       isMatch = true;
-      print('✅ Match exato');
+      debugPrint('✅ Match exato');
     }
     // 2. Confiança alta (> 80%)
     else if (_currentConfidence > 0.8) {
       isMatch = true;
-      print('✅ Confiança alta: ${(_currentConfidence * 100).toStringAsFixed(0)}%');
+      debugPrint('✅ Confiança alta: ${(_currentConfidence * 100).toStringAsFixed(0)}%');
     }
     // 3. Palavras alternativas do dicionário
     else {
@@ -173,7 +177,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
       for (var alt in alternatives) {
         if (recognized.contains(alt) || alt.contains(recognized)) {
           isMatch = true;
-          print('✅ Match por dicionário: "$alt"');
+          debugPrint('✅ Match por dicionário: "$alt"');
           break;
         }
       }
@@ -185,7 +189,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
       for (var word in recognizedWords) {
         if (word.length >= 2 && _isSimilar(word, targetWord)) {
           isMatch = true;
-          print('✅ Match por similaridade fonética: "$word" ~ "$targetWord"');
+          debugPrint('✅ Match por similaridade fonética: "$word" ~ "$targetWord"');
           break;
         }
       }
@@ -197,7 +201,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
       final cleanRecognized = _removeAccents(recognized);
       if (cleanRecognized.contains(cleanTarget)) {
         isMatch = true;
-        print('✅ Match por contém (sem acentos)');
+        debugPrint('✅ Match por contém (sem acentos)');
       }
     }
 
@@ -302,7 +306,28 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
             ),
             const SizedBox(height: 16),
-            Icon(widget.pictogram.icon, size: 80, color: Theme.of(context).primaryColor),
+
+            // 🖼️ ÁREA DA IMAGEM OU ÍCONE 🖼️
+            SizedBox(
+              height: 120,
+              width: 120,
+              child: widget.pictogram.assetPath != null
+                  ? Image.asset(
+                widget.pictogram.assetPath!,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  widget.pictogram.icon,
+                  size: 80,
+                  color: Theme.of(context).primaryColor,
+                ),
+              )
+                  : Icon(
+                widget.pictogram.icon,
+                size: 80,
+                color: Theme.of(context).primaryColor,
+              ),
+            ),
+
             const SizedBox(height: 8),
             Text(
               widget.pictogram.label,
@@ -325,20 +350,19 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
             if (_hasPlayedAudio && !_isSuccess && !_isFailed && !_isListening)
               Column(
                 children: [
-                  const Text(
-                    'Agora repita em voz alta:',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: _startListening,
-                    icon: const Icon(Icons.mic, size: 24),
-                    label: const Text('Falar agora'),
+                    icon: const Icon(Icons.mic),
+                    label: const Text('Tentar falar'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                     ),
+                  ),
+                  TextButton(
+                    onPressed: _skipAndAdd,
+                    child: const Text('Pular e adicionar mesmo assim'),
                   ),
                 ],
               ),
@@ -367,66 +391,18 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
                     },
                   ),
                   const SizedBox(height: 16),
-                  AnimatedBuilder(
-                    animation: _speechService,
-                    builder: (context, child) {
-                      return Column(
-                        children: [
-                          Text(
-                            _currentRecognized.isEmpty
-                                ? 'Ouvindo...'
-                                : '"$_currentRecognized"',
-                            style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
-                            textAlign: TextAlign.center,
-                          ),
-                          if (_currentConfidence > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4.0),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    width: 100,
-                                    height: 4,
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey[300],
-                                      borderRadius: BorderRadius.circular(2),
-                                    ),
-                                    child: FractionallySizedBox(
-                                      widthFactor: _currentConfidence,
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                          color: _currentConfidence > 0.7 ? Colors.green : Colors.orange,
-                                          borderRadius: BorderRadius.circular(2),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    '${(_currentConfidence * 100).toStringAsFixed(0)}%',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: _currentConfidence > 0.7 ? Colors.green : Colors.orange,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          if (_showNotUnderstood)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: Text(
-                                'Não entendi. Tente falar: "${widget.pictogram.label}"',
-                                style: const TextStyle(color: Colors.orange, fontSize: 12),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                        ],
-                      );
-                    },
+                  Text(
+                    _currentRecognized.isEmpty ? 'Ouvindo...' : '"$_currentRecognized"',
+                    style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
                   ),
+                  if (_showNotUnderstood)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        'Não entendi, tente novamente',
+                        style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                      ),
+                    ),
                 ],
               ),
 
@@ -439,38 +415,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
                 ],
               ),
 
-            if (_isFailed)
-              Column(
-                children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 60),
-                  const SizedBox(height: 8),
-                  const Text('Não foi possível ouvir', style: TextStyle(color: Colors.red, fontSize: 16)),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _isFailed = false;
-                        _hasPlayedAudio = true;
-                      });
-                      _startListening();
-                    },
-                    child: const Text('Tentar novamente'),
-                  ),
-                ],
-              ),
-
-            const SizedBox(height: 16),
-
-            TextButton(
-              onPressed: _skipAndAdd,
-              child: const Text(
-                'Pular (não consegui falar)',
-                style: TextStyle(color: Colors.orange),
-              ),
-            ),
-
-            const SizedBox(height: 8),
-
+            const SizedBox(height: 24),
             TextButton(
               onPressed: _handleCancel,
               child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),

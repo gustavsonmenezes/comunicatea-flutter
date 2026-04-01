@@ -7,7 +7,7 @@ import '../../widgets/category_tab.dart';
 import '../../services/gamification_service.dart';
 import '../../models/achievement_model.dart';
 import '../../models/user_progress_model.dart';
-import '../../widgets/voice_confirmation_dialog.dart'; // 🔽 NOVO IMPORT 🔽
+import '../../widgets/voice_confirmation_dialog.dart';
 
 class CommunicationScreen extends StatefulWidget {
   const CommunicationScreen({super.key});
@@ -39,7 +39,6 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
     await _flutterTts.setSpeechRate(0.5);
   }
 
-  // 🔽 MÉTODO MODIFICADO - AGORA COM RECONHECIMENTO DE VOZ 🔽
   void _adicionarPictograma(Pictogram pictogram) async {
     // Exibe o diálogo de reconhecimento de voz
     final bool? success = await showDialog<bool>(
@@ -198,7 +197,19 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                         ),
                         child: Row(
                           children: [
-                            Icon(pictogram.icon, size: 20),
+                            // 🖼️ MINIATURA DA IMAGEM OU ÍCONE 🖼️
+                            SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: pictogram.assetPath != null
+                                  ? Image.asset(
+                                pictogram.assetPath!,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Icon(pictogram.icon, size: 20),
+                              )
+                                  : Icon(pictogram.icon, size: 20),
+                            ),
                             const SizedBox(width: 4),
                             Text(pictogram.label),
                           ],
@@ -217,6 +228,7 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
                       label: const Text('Falar'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
                       ),
                     ),
                     const SizedBox(width: 8),

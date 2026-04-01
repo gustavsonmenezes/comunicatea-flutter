@@ -35,25 +35,53 @@ class PictogramCard extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                pictogram.icon,
-                size: 32,
-                color: categoryColor,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                pictogram.label,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: categoryColor,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                flex: 3,
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: _buildImageOrIcon(),
                 ),
-                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                flex: 1,
+                child: Text(
+                  pictogram.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: categoryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildImageOrIcon() {
+    if (pictogram.assetPath != null) {
+      return Image.asset(
+        pictogram.assetPath!,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          // Fallback para ícone caso a imagem não seja encontrada no dispositivo
+          return Icon(
+            pictogram.icon,
+            size: 40,
+            color: categoryColor,
+          );
+        },
+      );
+    } else {
+      return Icon(
+        pictogram.icon,
+        size: 40,
+        color: categoryColor,
+      );
+    }
   }
 }
