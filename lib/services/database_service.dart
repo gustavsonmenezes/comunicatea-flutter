@@ -2,6 +2,8 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../models/child_profile.dart';
 import '../models/user_progress_model.dart';
 import '../models/profile_settings_model.dart';
@@ -165,6 +167,22 @@ class DatabaseService {
         }, conflictAlgorithm: ConflictAlgorithm.replace);
       }
     });
+
+    // Sincronizar com o Firestore
+    await syncChildToCloud(child);
+  }
+
+  // Sincronizar criança com o Firestore
+  Future<void> syncChildToCloud(ChildProfile child) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('children')
+          .doc(child.id) // Usa o mesmo ID do SQLite
+          .set(child.toMap(), SetOptions(merge: true));
+      debugPrint("✅ Dados sincronizados com a nuvem!");
+    } catch (e) {
+      debugPrint("❌ Erro ao sincronizar: $e");
+    }
   }
 
   // Buscar crianças de um profissional
@@ -237,8 +255,12 @@ class DatabaseService {
           professionalIds: [],
           settings: settings,
           progress: progress,
-          lastActive: DateTime.parse(row['lastActive']?.toString() ?? DateTime.now().toIso8601String()),
-          createdAt: DateTime.parse(row['createdAt']?.toString() ?? DateTime.now().toIso8601String()),
+          lastActive: DateTime.parse(
+            row['lastActive']?.toString() ?? DateTime.now().toIso8601String(),
+          ),
+          createdAt: DateTime.parse(
+            row['createdAt']?.toString() ?? DateTime.now().toIso8601String(),
+          ),
         ));
       } catch (e) {
         debugPrint('Erro ao processar criança: $e');
@@ -308,8 +330,11 @@ class DatabaseService {
       );
 
       // Buscar profissionais associados
-      final profRows = await db.query('professional_children',
-          where: 'childId = ?', whereArgs: [childId]);
+      final profRows = await db.query(
+        'professional_children',
+        where: 'childId = ?',
+        whereArgs: [childId],
+      );
       List<String> professionalIds = profRows
           .map((r) => r['professionalId']?.toString() ?? '')
           .where((id) => id.isNotEmpty)
@@ -325,8 +350,12 @@ class DatabaseService {
         professionalIds: professionalIds,
         settings: settings,
         progress: progress,
-        lastActive: DateTime.parse(row['lastActive']?.toString() ?? DateTime.now().toIso8601String()),
-        createdAt: DateTime.parse(row['createdAt']?.toString() ?? DateTime.now().toIso8601String()),
+        lastActive: DateTime.parse(
+          row['lastActive']?.toString() ?? DateTime.now().toIso8601String(),
+        ),
+        createdAt: DateTime.parse(
+          row['createdAt']?.toString() ?? DateTime.now().toIso8601String(),
+        ),
       );
     } catch (e) {
       debugPrint('Erro ao processar criança: $e');
@@ -373,8 +402,12 @@ class DatabaseService {
     }
 
     if (updateData.isNotEmpty) {
-      await db.update('settings', updateData,
-          where: 'childId = ?', whereArgs: [childId]);
+      await db.update(
+        'settings',
+        updateData,
+        where: 'childId = ?',
+        whereArgs: [childId],
+      );
     }
   }
 
