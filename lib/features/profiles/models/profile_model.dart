@@ -1,4 +1,3 @@
-// features/profiles/models/profile_model.dart
 import 'package:flutter/material.dart';
 
 class UserProfile {
@@ -7,6 +6,7 @@ class UserProfile {
   final String avatarEmoji;
   final DateTime createdAt;
   final DateTime? lastUsed;
+  final String? childId; // ✅ ADICIONADO
 
   UserProfile({
     required this.id,
@@ -14,6 +14,7 @@ class UserProfile {
     required this.avatarEmoji,
     required this.createdAt,
     this.lastUsed,
+    this.childId, // ✅ ADICIONADO
   });
 
   Map<String, dynamic> toJson() => {
@@ -22,6 +23,7 @@ class UserProfile {
     'avatarEmoji': avatarEmoji,
     'createdAt': createdAt.toIso8601String(),
     'lastUsed': lastUsed?.toIso8601String(),
+    'childId': childId, // ✅ ADICIONADO
   };
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -30,9 +32,8 @@ class UserProfile {
       name: json['name'],
       avatarEmoji: json['avatarEmoji'],
       createdAt: DateTime.parse(json['createdAt']),
-      lastUsed: json['lastUsed'] != null
-          ? DateTime.parse(json['lastUsed'])
-          : null,
+      lastUsed: json['lastUsed'] != null ? DateTime.parse(json['lastUsed']) : null,
+      childId: json['childId'], // ✅ ADICIONADO
     );
   }
 
@@ -40,6 +41,7 @@ class UserProfile {
     String? name,
     String? avatarEmoji,
     DateTime? lastUsed,
+    String? childId,
   }) {
     return UserProfile(
       id: id,
@@ -47,26 +49,9 @@ class UserProfile {
       avatarEmoji: avatarEmoji ?? this.avatarEmoji,
       createdAt: createdAt,
       lastUsed: lastUsed ?? this.lastUsed,
+      childId: childId ?? this.childId,
     );
   }
 }
 
-// Lista de avatares disponíveis
-const List<String> availableAvatars = [
-  '😊', // Rosto feliz
-  '🦁', // Leão
-  '🐶', // Cachorro
-  '🐱', // Gato
-  '🐼', // Panda
-  '🐸', // Sapo
-  '🐧', // Pinguim
-  '🦊', // Raposa
-  '🐨', // Coala
-  '🦉', // Coruja
-  '🐙', // Polvo
-  '🦄', // Unicórnio
-  '🌈', // Arco-íris
-  '⭐', // Estrela
-  '🚀', // Foguete
-  '⚽', // Bola
-];
+const List<String> availableAvatars = ['😊','🦁','🐶','🐱','🐼','🐸','🐧','🦊','🐨','🦉','🐙','🦄','🌈','⭐','🚀','⚽'];

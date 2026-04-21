@@ -13,6 +13,8 @@ class SpeechLogService {
   Future<void> _ensureTableExists() async {
     try {
       final db = await _dbService.database;
+      if (db == null) return; // SQLite não disponível (ex: Web)
+
       await db.execute('''
         CREATE TABLE IF NOT EXISTS speech_logs(
           id TEXT PRIMARY KEY,
@@ -34,11 +36,17 @@ class SpeechLogService {
     try {
       await _ensureTableExists();
       final db = await _dbService.database;
-      await db.insert(
-        'speech_logs',
-        log.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      if (db != null) {
+        await db.insert(
+          'speech_logs',
+          log.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      
+      // Sincroniza com o Firestore (opcional, se quiser logs na nuvem)
+      await _dbService.syncSpeechLogToCloud(log.toMap());
+      
       debugPrint('✅ Log salvo: ${log.targetWord} - Sucesso: ${log.isSuccess}');
     } catch (e) {
       debugPrint('❌ Erro ao salvar log: $e');
@@ -48,6 +56,8 @@ class SpeechLogService {
   Future<List<SpeechLog>> getAllLogs() async {
     await _ensureTableExists();
     final db = await _dbService.database;
+    if (db == null) return [];
+
     final List<Map<String, dynamic>> maps = await db.query(
       'speech_logs',
       orderBy: 'timestamp DESC',
@@ -58,6 +68,8 @@ class SpeechLogService {
   Future<List<SpeechLog>> getLogsByPictogram(String pictogramId) async {
     await _ensureTableExists();
     final db = await _dbService.database;
+    if (db == null) return [];
+
     final List<Map<String, dynamic>> maps = await db.query(
       'speech_logs',
       where: 'pictogram_id = ?',
@@ -70,6 +82,15 @@ class SpeechLogService {
   Future<Map<String, dynamic>> getStatistics() async {
     await _ensureTableExists();
     final db = await _dbService.database;
+    if (db == null) {
+      return {
+        'total_attempts': 0,
+        'total_successes': 0,
+        'success_rate': 0.0,
+        'top_words': [],
+        'weekly_stats': [],
+      };
+    }
 
     final total = Sqflite.firstIntValue(
         await db.rawQuery('SELECT COUNT(*) FROM speech_logs')
@@ -110,18 +131,20 @@ class SpeechLogService {
   Future<void> deleteAllLogs() async {
     await _ensureTableExists();
     final db = await _dbService.database;
-    await db.delete('speech_logs');
+    if (db != null) await db.delete('speech_logs');
     debugPrint('🗑️ Todos os logs de fala foram deletados');
   }
 
   Future<void> deleteOldLogs(DateTime beforeDate) async {
     await _ensureTableExists();
     final db = await _dbService.database;
-    await db.delete(
-      'speech_logs',
-      where: 'timestamp < ?',
-      whereArgs: [beforeDate.toIso8601String()],
-    );
+    if (db != null) {
+      await db.delete(
+        'speech_logs',
+        where: 'timestamp < ?',
+        whereArgs: [beforeDate.toIso8601String()],
+      );
+    }
     debugPrint('🗑️ Logs anteriores a $beforeDate deletados');
   }
 }

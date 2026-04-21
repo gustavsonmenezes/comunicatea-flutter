@@ -1,4 +1,3 @@
-// features/models/auth_user_model.dart
 enum UserRole {
   child,        // Criança
   professional, // Profissional
@@ -7,7 +6,7 @@ enum UserRole {
 class AuthUser {
   final String id;
   final String username;
-  final String passwordHash;
+  final String? passwordHash; // ✅ Tornando opcional para o Firebase
   final UserRole role;
   final String? childProfileId;
   final String displayName;
@@ -16,7 +15,7 @@ class AuthUser {
   AuthUser({
     required this.id,
     required this.username,
-    required this.passwordHash,
+    this.passwordHash, // ✅ Opcional agora
     required this.role,
     this.childProfileId,
     required this.displayName,

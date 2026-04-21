@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../../services/auth_service.dart';
 import '../../../services/database_service.dart';
 import '../../../models/auth_user_model.dart';
@@ -8,13 +10,16 @@ import '../../../models/profile_settings_model.dart';
 
 class ProfessionalProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
-  final DatabaseService _dbService = DatabaseService(); // BANCO REAL!
+  final DatabaseService _dbService = DatabaseService();
 
   AuthUser? _currentProfessional;
   List<ChildProfile> _children = [];
   List<Map<String, dynamic>> _alerts = [];
   bool _isLoading = false;
   String? _error;
+  
+  // Stream Subscription para Web
+  StreamSubscription<List<ChildProfile>>? _childrenSubscription;
 
   // Getters
   AuthUser? get currentProfessional => _currentProfessional;
@@ -23,7 +28,6 @@ class ProfessionalProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  // Estatísticas calculadas
   int get totalChildren => _children.length;
 
   int get activeToday {
@@ -37,9 +41,14 @@ class ProfessionalProvider extends ChangeNotifier {
 
   int get totalAlerts => _alerts.length;
 
+  @override
+  void dispose() {
+    _childrenSubscription?.cancel();
+    super.dispose();
+  }
+
   // ==================== MÉTODOS PRINCIPAIS ====================
 
-  // CARREGAR DADOS DO BANCO REAL
   Future<void> loadProfessionalData(String professionalId) async {
     _isLoading = true;
     _error = null;
@@ -48,7 +57,6 @@ class ProfessionalProvider extends ChangeNotifier {
     try {
       _currentProfessional = _authService.currentUser;
 
-      // Se não tiver profissional logado, não carrega
       if (_currentProfessional == null) {
         _error = 'Nenhum profissional logado';
         _isLoading = false;
@@ -56,73 +64,90 @@ class ProfessionalProvider extends ChangeNotifier {
         return;
       }
 
-      // CARREGA DO BANCO DE DADOS REAL
-      debugPrint('Carregando crianças do profissional: $professionalId');
-      _children = await _dbService.getChildrenByProfessional(professionalId);
-      debugPrint('Crianças carregadas: ${_children.length}');
-
-      _checkAlerts();
+      // Se for Web, usamos Stream para tempo real
+      if (kIsWeb) {
+        await _childrenSubscription?.cancel();
+        _childrenSubscription = _dbService
+            .getChildrenStreamByProfessional(professionalId)
+            .listen((updatedChildren) {
+          _children = updatedChildren;
+          _checkAlerts();
+          _isLoading = false;
+          notifyListeners();
+        }, onError: (e) {
+          _error = 'Erro no Stream: $e';
+          _isLoading = false;
+          notifyListeners();
+        });
+      } else {
+        // Se for Mobile, busca normal (SQLite)
+        _children = await _dbService.getChildrenByProfessional(professionalId);
+        _checkAlerts();
+        _isLoading = false;
+        notifyListeners();
+      }
     } catch (e) {
       _error = 'Erro ao carregar dados: $e';
-      debugPrint(_error);
-    } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // ADICIONAR NOVA CRIANÇA (SALVA NO BANCO)
   Future<void> addChild(ChildProfile child) async {
     try {
-      debugPrint('Salvando nova criança: ${child.name}');
-
-      // Salva no banco de dados
       await _dbService.saveChild(child);
-
-      // Adiciona na lista local
-      _children.add(child);
-
-      // Verifica alertas
-      _checkAlerts();
-
-      notifyListeners();
-
-      debugPrint('Criança salva com sucesso!');
+      if (!kIsWeb) {
+        _children.add(child);
+        _checkAlerts();
+        notifyListeners();
+      }
     } catch (e) {
       _error = 'Erro ao adicionar criança: $e';
-      debugPrint(_error);
       notifyListeners();
-      rethrow; // Para o diálogo saber que deu erro
+      rethrow;
     }
   }
 
-  // REMOVER CRIANÇA
   Future<void> removeChild(String childId) async {
     try {
-      debugPrint('Removendo criança: $childId');
-
-      // Remove do banco
       await _dbService.deleteChild(childId);
-
-      // Remove da lista local
-      _children.removeWhere((c) => c.id == childId);
-
-      _checkAlerts();
-      notifyListeners();
-
-      debugPrint('Criança removida com sucesso!');
+      if (!kIsWeb) {
+        _children.removeWhere((c) => c.id == childId);
+        _checkAlerts();
+        notifyListeners();
+      }
     } catch (e) {
       _error = 'Erro ao remover criança: $e';
-      debugPrint(_error);
       notifyListeners();
     }
   }
 
-  // ATUALIZAR CONFIGURAÇÕES (SALVA NO BANCO)
+  // BUSCAR CRIANÇA ESPECÍFICA (RESTAURADO)
+  Future<ChildProfile?> getChild(String childId) async {
+    try {
+      // Tenta da lista local primeiro
+      try {
+        final localChild = _children.firstWhere((c) => c.id == childId);
+        return localChild;
+      } catch (e) {
+        // Se não tiver na lista, busca no banco
+        final dbChild = await _dbService.getChild(childId);
+        if (dbChild != null && !kIsWeb) {
+          _children.add(dbChild);
+          notifyListeners();
+        }
+        return dbChild;
+      }
+    } catch (e) {
+      _error = 'Erro ao buscar criança: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  // ATUALIZAR CONFIGURAÇÕES (RESTAURADO)
   Future<void> updateChildSettings(String childId, Map<String, dynamic> settings) async {
     try {
-      debugPrint('Atualizando configurações da criança: $childId');
-
       // Primeiro, busca a criança atual
       final childIndex = _children.indexWhere((c) => c.id == childId);
       if (childIndex == -1) {
@@ -131,89 +156,19 @@ class ProfessionalProvider extends ChangeNotifier {
 
       final child = _children[childIndex];
 
-      // Cria configurações atualizadas
-      final updatedSettings = ProfileSettings(
-        voiceRate: settings['voiceRate'] ?? child.settings.voiceRate,
-        voicePitch: settings['voicePitch'] ?? child.settings.voicePitch,
-        highContrast: settings['highContrast'] ?? child.settings.highContrast,
-        selectedVoice: settings['selectedVoice'] ?? child.settings.selectedVoice,
-      );
-
       // Atualiza no banco de dados
-      await _dbService.updateChildSettings(childId, {
-        'voiceRate': updatedSettings.voiceRate,
-        'voicePitch': updatedSettings.voicePitch,
-        'highContrast': updatedSettings.highContrast,
-        'selectedVoice': updatedSettings.selectedVoice,
-      });
+      await _dbService.updateChildSettings(childId, settings);
 
-      // Atualiza na lista local
-      _children[childIndex] = ChildProfile(
-        id: child.id,
-        name: child.name,
-        age: child.age,
-        diagnosis: child.diagnosis,
-        photoUrl: child.photoUrl,
-        responsibleId: child.responsibleId,
-        professionalIds: child.professionalIds,
-        settings: updatedSettings,
-        progress: child.progress,
-        lastActive: child.lastActive,
-        createdAt: child.createdAt,
-      );
+      // Se não for Web (onde o stream atualiza), atualiza localmente
+      if (!kIsWeb) {
+        final updatedSettings = ProfileSettings(
+          voiceRate: settings['voiceRate'] ?? child.settings.voiceRate,
+          voicePitch: settings['voicePitch'] ?? child.settings.voicePitch,
+          highContrast: settings['highContrast'] ?? child.settings.highContrast,
+          selectedVoice: settings['selectedVoice'] ?? child.settings.selectedVoice,
+        );
 
-      notifyListeners();
-
-      debugPrint('Configurações atualizadas com sucesso!');
-    } catch (e) {
-      _error = 'Erro ao atualizar configurações: $e';
-      debugPrint(_error);
-      notifyListeners();
-      rethrow;
-    }
-  }
-
-  // BUSCAR CRIANÇA ESPECÍFICA (DO BANCO SE NECESSÁRIO)
-  Future<ChildProfile?> getChild(String childId) async {
-    try {
-      debugPrint('Buscando criança: $childId');
-
-      // Tenta da lista local primeiro
-      try {
-        final localChild = _children.firstWhere((c) => c.id == childId);
-        debugPrint('Criança encontrada na lista local');
-        return localChild;
-      } catch (e) {
-        // Se não tiver na lista, busca no banco
-        debugPrint('Buscando criança no banco de dados');
-        final dbChild = await _dbService.getChild(childId);
-        if (dbChild != null) {
-          // Adiciona à lista local para cache
-          _children.add(dbChild);
-          notifyListeners();
-        }
-        return dbChild;
-      }
-    } catch (e) {
-      _error = 'Erro ao buscar criança: $e';
-      debugPrint(_error);
-      return null;
-    }
-  }
-
-  // ATUALIZAR PROGRESSO (USADO QUANDO CRIANÇA USA O APP)
-  Future<void> updateChildProgress(String childId, UserProgress progress) async {
-    try {
-      debugPrint('Atualizando progresso da criança: $childId');
-
-      // Atualiza no banco
-      await _dbService.updateChildProgress(childId, progress);
-
-      // Atualiza na lista local
-      final index = _children.indexWhere((c) => c.id == childId);
-      if (index != -1) {
-        final child = _children[index];
-        _children[index] = ChildProfile(
+        _children[childIndex] = ChildProfile(
           id: child.id,
           name: child.name,
           age: child.age,
@@ -221,25 +176,19 @@ class ProfessionalProvider extends ChangeNotifier {
           photoUrl: child.photoUrl,
           responsibleId: child.responsibleId,
           professionalIds: child.professionalIds,
-          settings: child.settings,
-          progress: progress,
-          lastActive: DateTime.now(), // Atualiza último acesso
+          settings: updatedSettings,
+          progress: child.progress,
+          lastActive: child.lastActive,
           createdAt: child.createdAt,
         );
-
-        // Reavalia alertas
-        _checkAlerts();
         notifyListeners();
       }
-
-      debugPrint('Progresso atualizado com sucesso!');
     } catch (e) {
-      _error = 'Erro ao atualizar progresso: $e';
-      debugPrint(_error);
+      _error = 'Erro ao atualizar configurações: $e';
+      notifyListeners();
+      rethrow;
     }
   }
-
-  // ==================== SISTEMA DE ALERTAS ====================
 
   void _checkAlerts() {
     _alerts.clear();
@@ -248,10 +197,9 @@ class ProfessionalProvider extends ChangeNotifier {
     for (var child in _children) {
       final daysInactive = now.difference(child.lastActive).inDays;
 
-      // Alerta de inatividade
       if (daysInactive > 3) {
         _alerts.add({
-          'id': 'inactive_${child.id}_${now.millisecondsSinceEpoch}',
+          'id': 'inactive_${child.id}',
           'type': 'inactive',
           'childId': child.id,
           'childName': child.name,
@@ -262,26 +210,9 @@ class ProfessionalProvider extends ChangeNotifier {
         });
       }
 
-      // Alerta de baixo progresso (menos de 5 sessões em 7 dias)
-      if (child.progress.totalSessions < 5 &&
-          now.difference(child.createdAt).inDays > 7) {
+      if (child.progress.totalPhrasesBuilt > 100) {
         _alerts.add({
-          'id': 'lowprogress_${child.id}_${now.millisecondsSinceEpoch}',
-          'type': 'low_progress',
-          'childId': child.id,
-          'childName': child.name,
-          'message': '${child.name} está com poucas sessões',
-          'date': now,
-          'severity': 'medium',
-          'read': false,
-        });
-      }
-
-      // Alerta de conquista (positivo!)
-      if (child.progress.totalPhrasesBuilt > 100 &&
-          !_alerts.any((a) => a['childId'] == child.id && a['type'] == 'milestone')) {
-        _alerts.add({
-          'id': 'milestone_${child.id}_${now.millisecondsSinceEpoch}',
+          'id': 'milestone_${child.id}',
           'type': 'milestone',
           'childId': child.id,
           'childName': child.name,
@@ -292,70 +223,12 @@ class ProfessionalProvider extends ChangeNotifier {
         });
       }
     }
-
-    // Ordenar alertas por data (mais recentes primeiro)
     _alerts.sort((a, b) => (b['date'] as DateTime).compareTo(a['date'] as DateTime));
   }
 
-  // Marcar alerta como lido
-  void markAlertAsRead(String alertId) {
-    final index = _alerts.indexWhere((a) => a['id'] == alertId);
-    if (index != -1) {
-      _alerts[index]['read'] = true;
-      notifyListeners();
-    }
-  }
-
-  // Marcar todos alertas como lidos
-  void markAllAlertsAsRead() {
-    for (var alert in _alerts) {
-      alert['read'] = true;
-    }
-    notifyListeners();
-  }
-
-  // Limpar erro
-  void clearError() {
-    _error = null;
-    notifyListeners();
-  }
-
-  // Recarregar dados
   Future<void> refreshData() async {
     if (_currentProfessional != null) {
       await loadProfessionalData(_currentProfessional!.id);
     }
-  }
-
-  // ==================== MÉTODOS DE UTILIDADE ====================
-
-  // Buscar estatísticas rápidas
-  Map<String, dynamic> getStatistics() {
-    int totalSessions = _children.fold(0, (sum, c) => sum + c.progress.totalSessions);
-    int totalPhrases = _children.fold(0, (sum, c) => sum + c.progress.totalPhrasesBuilt);
-    double avgPhrasesPerChild = _children.isEmpty ? 0 : totalPhrases / _children.length;
-
-    return {
-      'totalSessions': totalSessions,
-      'totalPhrases': totalPhrases,
-      'avgPhrasesPerChild': avgPhrasesPerChild,
-      'activeToday': activeToday,
-      'totalAlerts': totalAlerts,
-    };
-  }
-
-  // Buscar crianças por status
-  List<ChildProfile> getActiveChildren() {
-    final today = DateTime.now();
-    return _children.where((c) {
-      return c.lastActive.year == today.year &&
-          c.lastActive.month == today.month &&
-          c.lastActive.day == today.day;
-    }).toList();
-  }
-
-  List<ChildProfile> getInactiveChildren({int days = 7}) {
-    final limit = DateTime.now().subtract(Duration(days: days));
-    return _children.where((c) => c.lastActive.isBefore(limit)).toList();
   }
 }

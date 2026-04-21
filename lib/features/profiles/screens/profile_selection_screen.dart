@@ -1,6 +1,7 @@
-// features/profiles/screens/profile_selection_screen.dart
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../services/profile_service.dart';
+import '../../../services/gamification_service.dart'; // ✅ ADICIONADO
 import '../../../theme/app_theme.dart';
 import 'create_profile_screen.dart';
 import '../../communication/communication_screen.dart';
@@ -40,17 +41,13 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
         title: const Text('ESCOLHA SEU PERFIL'),
         backgroundColor: AppTheme.primaryColor,
         foregroundColor: Colors.white,
-        elevation: 0,
       ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              AppTheme.primaryLight,
-              AppTheme.backgroundColor,
-            ],
+            colors: [AppTheme.primaryLight, AppTheme.backgroundColor],
           ),
         ),
         child: _profileService.profiles.isEmpty
@@ -60,79 +57,19 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.person_outline,
-            size: 100,
-            color: Colors.grey,
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Nenhum perfil encontrado',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Crie um perfil para começar',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-          ),
-          const SizedBox(height: 30),
-          ElevatedButton.icon(
-            onPressed: _navigateToCreateProfile,
-            icon: const Icon(Icons.add),
-            label: const Text('CRIAR PERFIL'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(30),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildProfilesGrid() {
     return Column(
       children: [
         const SizedBox(height: 30),
-        const Text(
-          'Quem está usando?',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: AppTheme.primaryColor,
-          ),
-        ),
+        const Text('Quem está usando?', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
         const SizedBox(height: 20),
         Expanded(
           child: GridView.builder(
             padding: const EdgeInsets.all(20),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 1,
-              crossAxisSpacing: 15,
-              mainAxisSpacing: 15,
-            ),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, childAspectRatio: 1, crossAxisSpacing: 15, mainAxisSpacing: 15),
             itemCount: _profileService.profiles.length + 1,
             itemBuilder: (context, index) {
-              if (index == _profileService.profiles.length) {
-                return _buildAddProfileCard();
-              }
-
+              if (index == _profileService.profiles.length) return _buildAddProfileCard();
               final profile = _profileService.profiles[index];
               return _buildProfileCard(profile);
             },
@@ -147,7 +84,12 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
       onTap: () async {
         final success = await _profileService.selectProfile(profile.id);
         if (success && mounted) {
-          // Vai para tela de comunicação
+          // ✅ VÍNCULO CRUCIAL: Avisa ao Gamification qual ID usar na nuvem
+          // Se o perfil tiver um childId associado, usamos ele. Se não, usamos o próprio ID do perfil.
+          final cloudId = profile.childId ?? profile.id;
+          GamificationService().setCurrentChild(cloudId);
+          await GamificationService().initializeForProfile(profile.id);
+
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const CommunicationScreen()),
@@ -155,51 +97,14 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
         }
       },
       child: Card(
-        elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppTheme.primaryColor.withOpacity(0.1),
-                Colors.white,
-              ],
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ProfileAvatar(
-                emoji: profile.avatarEmoji,
-                size: 70,
-                backgroundColor: AppTheme.primaryColor.withOpacity(0.2),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                profile.name,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-              ),
-              const SizedBox(height: 5),
-              if (profile.lastUsed != null)
-                Text(
-                  _formatDate(profile.lastUsed!),
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[600],
-                  ),
-                ),
-            ],
-          ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ProfileAvatar(emoji: profile.avatarEmoji, size: 70),
+            const SizedBox(height: 10),
+            Text(profile.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          ],
         ),
       ),
     );
@@ -207,63 +112,28 @@ class _ProfileSelectionScreenState extends State<ProfileSelectionScreen> {
 
   Widget _buildAddProfileCard() {
     return GestureDetector(
-      onTap: _navigateToCreateProfile,
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateProfileScreen())),
       child: Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: AppTheme.primaryColor.withOpacity(0.3),
-            width: 2,
-          ),
-        ),
-        child: Column(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: AppTheme.primaryColor.withOpacity(0.3), width: 2)),
+        child: const Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 70,
-              height: 70,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.add,
-                size: 40,
-                color: AppTheme.primaryColor,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              'NOVO PERFIL',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primaryColor,
-              ),
-            ),
+            Icon(Icons.add, size: 40, color: AppTheme.primaryColor),
+            SizedBox(height: 10),
+            Text('NOVO PERFIL', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
           ],
         ),
       ),
     );
   }
 
-  void _navigateToCreateProfile() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const CreateProfileScreen(),
+  Widget _buildEmptyState() {
+    return Center(
+      child: ElevatedButton.icon(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CreateProfileScreen())),
+        icon: const Icon(Icons.add),
+        label: const Text('CRIAR PERFIL'),
       ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final difference = now.difference(date).inDays;
-
-    if (difference == 0) return 'hoje';
-    if (difference == 1) return 'ontem';
-    if (difference < 7) return 'há $difference dias';
-    return '${date.day}/${date.month}';
   }
 }
