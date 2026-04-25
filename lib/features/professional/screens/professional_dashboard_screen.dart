@@ -8,7 +8,6 @@ import '../../../models/child_profile.dart';
 import '../../../models/profile_settings_model.dart';
 import '../../../models/user_progress_model.dart';
 import '../../../services/auth_service.dart';
-import '../../../theme/app_theme.dart';
 
 class ProfessionalDashboardScreen extends StatefulWidget {
   const ProfessionalDashboardScreen({Key? key}) : super(key: key);
@@ -34,27 +33,18 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
     return Consumer<ProfessionalProvider>(
       builder: (context, provider, child) {
         return Scaffold(
+          backgroundColor: Colors.grey[100],
           appBar: AppBar(
-            title: const Text('Painel do Profissional'),
+            title: const Text('Central de Monitoramento'),
             backgroundColor: Colors.blue[800],
             foregroundColor: Colors.white,
+            elevation: 0,
             actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () {
-                  final user = FirebaseAuth.instance.currentUser;
-                  if (user != null) {
-                    provider.loadProfessionalData(user.uid);
-                  }
-                },
-              ),
               IconButton(
                 icon: const Icon(Icons.logout),
                 onPressed: () async {
                   await AuthService().logout();
-                  if (mounted) {
-                    Navigator.pushReplacementNamed(context, '/login');
-                  }
+                  if (mounted) Navigator.pushReplacementNamed(context, '/login');
                 },
               ),
             ],
@@ -63,14 +53,15 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
               ? const Center(child: CircularProgressIndicator())
               : Column(
                   children: [
-                    _buildStatsHeader(provider),
-                    _buildChildrenList(provider, context),
+                    _buildStatsBanner(provider),
+                    if (provider.totalAlerts > 0) _buildAlertBar(provider),
+                    Expanded(child: _buildChildrenList(provider, context)),
                   ],
                 ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _showAddChildDialog(context, provider),
             icon: const Icon(Icons.person_add),
-            label: const Text('Nova Criança'),
+            label: const Text('Novo Aluno'),
             backgroundColor: Colors.blue[800],
           ),
         );
@@ -78,82 +69,136 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
     );
   }
 
-  Widget _buildStatsHeader(ProfessionalProvider provider) {
+  Widget _buildStatsBanner(ProfessionalProvider provider) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       decoration: BoxDecoration(
         color: Colors.blue[800],
         borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
+          bottomLeft: Radius.circular(32),
+          bottomRight: Radius.circular(32),
         ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _buildStatItem('Crianças', '${provider.totalChildren}', Icons.people),
-          _buildStatItem('Ativas Hoje', '${provider.activeToday}', Icons.today),
-          _buildStatItem('Alertas', '${provider.totalAlerts}', Icons.warning_amber),
+          _statBox('ALUNOS', '${provider.totalChildren}', Icons.people_outline),
+          _statBox('ATIVOS HOJE', '${provider.activeToday}', Icons.bolt),
+          _statBox('ESTRELAS', _calculateTotalStars(provider.children), Icons.stars),
         ],
       ),
     );
   }
 
-  Widget _buildStatItem(String label, String value, IconData icon) {
+  String _calculateTotalStars(List<ChildProfile> children) {
+    int total = 0;
+    for (var child in children) {
+      total += child.progress.totalStars;
+    }
+    return total.toString();
+  }
+
+  Widget _statBox(String label, String value, IconData icon) {
     return Column(
       children: [
-        Icon(icon, color: Colors.white, size: 28),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-        ),
-        Text(
-          label,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
-        ),
+        Icon(icon, color: Colors.white, size: 24),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.w500)),
       ],
+    );
+  }
+
+  Widget _buildAlertBar(ProfessionalProvider provider) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.red[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red[100]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber_rounded, color: Colors.red[700]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${provider.totalAlerts} aluno(s) estão sem atividade há mais de 3 dias!',
+              style: TextStyle(color: Colors.red[900], fontWeight: FontWeight.w600, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildChildrenList(ProfessionalProvider provider, BuildContext context) {
     if (provider.children.isEmpty) {
-      return const Expanded(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.child_care, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              Text('Nenhuma criança vinculada.', style: TextStyle(color: Colors.grey, fontSize: 16)),
-            ],
-          ),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.child_care, size: 80, color: Colors.grey[300]),
+            const Text('Nenhum aluno cadastrado.', style: TextStyle(color: Colors.grey)),
+          ],
         ),
       );
     }
 
-    return Expanded(
-      child: ListView.builder(
-        padding: const EdgeInsets.all(8),
-        itemCount: provider.children.length,
-        itemBuilder: (context, index) {
-          final child = provider.children[index];
-          return ChildCard(
-            child: child,
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: provider.children.length,
+      itemBuilder: (context, index) {
+        final child = provider.children[index];
+        final bool isInactive = DateTime.now().difference(child.lastActive ?? DateTime.now()).inDays > 3;
+
+        return Card(
+          elevation: 0,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: isInactive ? Colors.red[100]! : Colors.transparent),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(12),
+            leading: CircleAvatar(
+              radius: 25,
+              backgroundColor: isInactive ? Colors.red[100] : Colors.blue[100],
+              child: Icon(Icons.person, color: isInactive ? Colors.red : Colors.blue[800]),
+            ),
+            title: Text(child.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text('⭐ ${child.progress.totalStars} estrelas conquistadas'),
+                Text(
+                  'Último acesso: ${_formatDate(child.lastActive)}',
+                  style: TextStyle(fontSize: 12, color: isInactive ? Colors.red : Colors.grey),
+                ),
+              ],
+            ),
+            trailing: const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (context) => ChildDetailsScreen(child: child),
-                ),
+                MaterialPageRoute(builder: (context) => ChildDetailsScreen(child: child)),
               );
             },
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Nunca';
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  // O restante dos métodos (_showAddChildDialog, _showCredentialsDialog) permanecem os mesmos.
   void _showAddChildDialog(BuildContext context, ProfessionalProvider provider) {
     final nameController = TextEditingController();
     final ageController = TextEditingController();
@@ -166,99 +211,53 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
       barrierDismissible: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Cadastrar Nova Criança'),
+          title: const Text('Cadastrar Novo Aluno'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Nome da Criança'),
-                ),
-                TextField(
-                  controller: ageController,
-                  decoration: const InputDecoration(labelText: 'Idade'),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: diagnosisController,
-                  decoration: const InputDecoration(labelText: 'Diagnóstico (opcional)'),
-                ),
-                TextField(
-                  controller: passwordController,
-                  decoration: const InputDecoration(labelText: 'Senha de Acesso'),
-                  obscureText: true,
-                ),
-                if (isSaving)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 20),
-                    child: LinearProgressIndicator(),
-                  ),
+                TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nome')),
+                TextField(controller: ageController, decoration: const InputDecoration(labelText: 'Idade'), keyboardType: TextInputType.number),
+                TextField(controller: diagnosisController, decoration: const InputDecoration(labelText: 'Diagnóstico')),
+                TextField(controller: passwordController, decoration: const InputDecoration(labelText: 'Senha'), obscureText: true),
+                if (isSaving) const LinearProgressIndicator(),
               ],
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: isSaving ? null : () => Navigator.pop(context),
-              child: const Text('Cancelar'),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
             ElevatedButton(
-              onPressed: isSaving
-                  ? null
-                  : () async {
-                      if (nameController.text.isEmpty || passwordController.text.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Nome e senha são obrigatórios')),
-                        );
-                        return;
-                      }
-
-                      setState(() => isSaving = true);
-
-                      try {
-                        final cleanName = nameController.text.toLowerCase().replaceAll(' ', '.');
-                        final childEmail = '$cleanName.${DateTime.now().millisecondsSinceEpoch}@crianca.com';
-
-                        final authService = AuthService();
-                        final userCredential = await authService.registerChild(
-                          childEmail,
-                          passwordController.text,
-                          nameController.text,
-                        );
-
-                        if (userCredential != null) {
-                          final childUid = userCredential.user!.uid;
-
-                          final newChild = ChildProfile(
-                            id: childUid,
-                            name: nameController.text,
-                            age: int.tryParse(ageController.text) ?? 0,
-                            diagnosis: diagnosisController.text,
-                            professionalIds: [FirebaseAuth.instance.currentUser!.uid],
-                            professionalEmails: [FirebaseAuth.instance.currentUser!.email ?? ''],
-                            settings: ProfileSettings(),
-                            progress: UserProgress(userId: childUid),
-                            createdAt: DateTime.now(),
-                            lastActive: DateTime.now(),
-                          );
-
-                          await provider.addChild(newChild);
-
-                          if (context.mounted) {
-                            Navigator.pop(context);
-                            _showCredentialsDialog(
-                                context, childEmail, passwordController.text, nameController.text);
-                          }
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
-                        }
-                      } finally {
-                        if (mounted) setState(() => isSaving = false);
-                      }
-                    },
-              child: const Text('Criar Criança'),
+              onPressed: isSaving ? null : () async {
+                setState(() => isSaving = true);
+                try {
+                  final email = '${nameController.text.toLowerCase().replaceAll(' ', '.')}.${DateTime.now().millisecondsSinceEpoch}@crianca.com';
+                  final auth = AuthService();
+                  final cred = await auth.registerChild(email, passwordController.text, nameController.text);
+                  if (cred != null) {
+                    final newChild = ChildProfile(
+                      id: cred.user!.uid,
+                      name: nameController.text,
+                      email: email,
+                      age: int.tryParse(ageController.text) ?? 0,
+                      diagnosis: diagnosisController.text,
+                      professionalIds: [FirebaseAuth.instance.currentUser!.uid],
+                      professionalEmails: [FirebaseAuth.instance.currentUser!.email ?? ''],
+                      settings: ProfileSettings(),
+                      progress: UserProgress(userId: cred.user!.uid),
+                      lastActive: DateTime.now(),
+                      createdAt: DateTime.now(),
+                    );
+                    await provider.addChild(newChild);
+                    if (mounted) {
+                      Navigator.pop(context);
+                      _showCredentialsDialog(context, email, passwordController.text, nameController.text);
+                    }
+                  }
+                } finally {
+                  if (mounted) setState(() => isSaving = false);
+                }
+              },
+              child: const Text('Criar'),
             ),
           ],
         ),
@@ -269,30 +268,18 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
   void _showCredentialsDialog(BuildContext context, String email, String password, String name) {
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Conta Criada com Sucesso!'),
+        title: const Text('Sucesso!'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Passe estas credenciais para os responsáveis de $name:'),
-            const SizedBox(height: 16),
-            SelectableText('E-mail: $email', style: const TextStyle(fontWeight: FontWeight.bold)),
-            SelectableText('Senha: $password', style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            const Text(
-              'A criança deve usar estes dados para logar no aplicativo.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
+            Text('Conta para $name criada.'),
+            const Divider(),
+            SelectableText('E-mail: $email'),
+            SelectableText('Senha: $password'),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
       ),
     );
   }

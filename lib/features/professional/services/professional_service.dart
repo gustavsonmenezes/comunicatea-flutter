@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kiWeb;
+import 'package:flutter/foundation.dart' show kIsWeb; // 🔥 Corrigido para kIsWeb
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/database_service.dart';
-import '../../../models/auth_user_model.dart';
 import '../../../models/child_profile.dart';
 
 class ProfessionalProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
   final DatabaseService _dbService = DatabaseService();
 
-  AuthUser? _currentProfessional;
   List<ChildProfile> _children = [];
   bool _isLoading = false;
   String? _error;
@@ -35,42 +34,50 @@ class ProfessionalProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _currentProfessional = _authService.currentUser;
+      final user = FirebaseAuth.instance.currentUser;
 
-      if (_currentProfessional == null) {
+      if (user == null) {
         _error = 'Nenhum profissional logado';
         _isLoading = false;
         notifyListeners();
         return;
       }
 
-      // AJUSTE AQUI: Usando o E-MAIL para sincronizar entre Web e Mobile
-      final professionalEmail = _currentProfessional!.email;
+      final professionalEmail = user.email;
 
-      if (kiWeb) {
-        // Na Web, usamos Stream para tempo real baseado no e-mail
-        _childrenSubscription?.cancel();
-        _childrenSubscription = _dbService
-            .getChildrenStreamByProfessional(professionalEmail)
-            .listen((updatedChildren) {
-          _children = updatedChildren;
-          _isLoading = false;
-          notifyListeners();
-        }, onError: (e) {
-          _error = 'Erro ao carregar dados: $e';
-          _isLoading = false;
-          notifyListeners();
+      // 🔥 Na Web ou Mobile, preferimos o Stream para manter o dashboard vivo
+      await _childrenSubscription?.cancel();
+      _childrenSubscription = _dbService
+          .getChildrenStreamByProfessional(professionalEmail)
+          .listen((updatedChildren) {
+        
+        // Ordena por última atividade (quem usou por último fica no topo)
+        updatedChildren.sort((a, b) {
+          if (a.lastActive == null) return 1;
+          if (b.lastActive == null) return -1;
+          return b.lastActive!.compareTo(a.lastActive!);
         });
-      } else {
-        // No Mobile, busca local ou via ID (ajustar conforme sua DatabaseService)
-        _children = await _dbService.getChildrenByProfessional(professionalId);
+
+        _children = updatedChildren;
         _isLoading = false;
         notifyListeners();
-      }
+      }, onError: (e) {
+        _error = 'Erro na sincronização: $e';
+        _isLoading = false;
+        notifyListeners();
+      });
+
     } catch (e) {
       _error = 'Erro ao carregar dados: $e';
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  // Novo: Verifica se alguma criança está inativa há muito tempo
+  bool isChildInactive(ChildProfile child) {
+    if (child.lastActive == null) return true;
+    final difference = DateTime.now().difference(child.lastActive!).inDays;
+    return difference > 3; // Alerta após 3 dias
   }
 }
