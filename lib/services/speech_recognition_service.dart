@@ -21,21 +21,22 @@ class SpeechRecognitionService extends ChangeNotifier {
     try {
       _isAvailable = await _speech.initialize(
         onStatus: (status) {
+          debugPrint('Speech status: $status');
           if (status == 'listening') {
             _isListening = true;
-          } else if (status == 'done' || status == 'notListening') {
+          } else {
             _isListening = false;
           }
           notifyListeners();
         },
         onError: (errorNotification) {
-          debugPrint('Speech recognition error: ${errorNotification.errorMsg}');
+          debugPrint('Speech error: ${errorNotification.errorMsg}');
           _isListening = false;
           notifyListeners();
         },
       );
     } catch (e) {
-      debugPrint('Failed to initialize speech recognition: $e');
+      debugPrint('Failed to initialize speech: $e');
       _isAvailable = false;
     }
     notifyListeners();
@@ -49,18 +50,22 @@ class SpeechRecognitionService extends ChangeNotifier {
     if (_isAvailable) {
       _lastWords = '';
       _confidence = 0.0;
+      
+      // Usamos listenMode.dictation que é mais robusto para a maioria dos aparelhos
       await _speech.listen(
         onResult: (result) {
           _lastWords = result.recognizedWords;
           if (result.hasConfidenceRating && result.confidence > 0) {
             _confidence = result.confidence;
           }
+          debugPrint('Recognized: "$_lastWords" (Conf: $_confidence)');
           onResult(_lastWords);
           notifyListeners();
         },
         localeId: 'pt_BR',
-        cancelOnError: true,
+        cancelOnError: false,
         partialResults: true,
+        listenMode: stt.ListenMode.dictation,
       );
       _isListening = true;
       notifyListeners();
