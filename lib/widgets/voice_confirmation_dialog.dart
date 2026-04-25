@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/pictogram_model.dart';
 import '../services/speech_recognition_service.dart';
 import '../services/sound_manager.dart';
@@ -30,6 +32,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   bool _showNotUnderstood = false;
   double _currentConfidence = 0.0;
   String _currentRecognized = '';
+  String? _childId;
 
   // Dicionário de palavras alternativas para cada pictograma
   final Map<String, List<String>> _alternativeWords = {
@@ -53,6 +56,15 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
       duration: const Duration(milliseconds: 1000),
     );
     _initAndPlayAudio();
+    _loadChildId();
+  }
+
+  Future<void> _loadChildId() async {
+    final prefs = await SharedPreferences.getInstance();
+    _childId = prefs.getString('currentChildId');
+    if (_childId == null) {
+      _childId = FirebaseAuth.instance.currentUser?.uid;
+    }
   }
 
   @override
@@ -104,53 +116,6 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     }
   }
 
-  // Calcula similaridade entre duas strings (algoritmo de Levenshtein)
-  int _levenshteinDistance(String s1, String s2) {
-    s1 = s1.toLowerCase();
-    s2 = s2.toLowerCase();
-
-    if (s1 == s2) return 0;
-    if (s1.isEmpty) return s2.length;
-    if (s2.isEmpty) return s1.length;
-
-    List<List<int>> matrix = List.generate(
-      s1.length + 1,
-          (i) => List.filled(s2.length + 1, 0),
-    );
-
-    for (int i = 0; i <= s1.length; i++) matrix[i][0] = i;
-    for (int j = 0; j <= s2.length; j++) matrix[0][j] = j;
-
-    for (int i = 1; i <= s1.length; i++) {
-      for (int j = 1; j <= s2.length; j++) {
-        int cost = (s1[i - 1] == s2[j - 1]) ? 0 : 1;
-        matrix[i][j] = [
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost,
-        ].reduce((a, b) => a < b ? a : b);
-      }
-    }
-    return matrix[s1.length][s2.length];
-  }
-
-  bool _isSimilar(String word1, String word2, {int maxDistance = 2}) {
-    if (word1.isEmpty || word2.isEmpty) return false;
-
-    final clean1 = _removeAccents(word1);
-    final clean2 = _removeAccents(word2);
-
-    int distance = _levenshteinDistance(clean1, clean2);
-
-    int maxLen = clean1.length > clean2.length ? clean1.length : clean2.length;
-
-    double similarity = 1.0 - (distance / maxLen);
-
-    debugPrint('📊 Similaridade: "$clean1" vs "$clean2" = ${(similarity * 100).toStringAsFixed(0)}%');
-
-    return similarity >= 0.7 || distance <= maxDistance;
-  }
-
   void _checkMatch(String spokenWords) {
     if (_isSuccess || _isFailed) return;
 
@@ -161,47 +126,17 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
 
     bool isMatch = false;
 
-    // 1. Match exato
     if (recognized == targetWord) {
       isMatch = true;
-      debugPrint('✅ Match exato');
-    }
-    // 2. Confiança alta (> 80%)
-    else if (_currentConfidence > 0.8) {
+    } else if (_currentConfidence > 0.8) {
       isMatch = true;
-      debugPrint('✅ Confiança alta: ${(_currentConfidence * 100).toStringAsFixed(0)}%');
-    }
-    // 3. Palavras alternativas do dicionário
-    else {
+    } else {
       final alternatives = _alternativeWords[targetWord] ?? [];
       for (var alt in alternatives) {
         if (recognized.contains(alt) || alt.contains(recognized)) {
           isMatch = true;
-          debugPrint('✅ Match por dicionário: "$alt"');
           break;
         }
-      }
-    }
-
-    // 4. Similaridade fonética (algoritmo de Levenshtein)
-    if (!isMatch) {
-      final recognizedWords = recognized.split(' ');
-      for (var word in recognizedWords) {
-        if (word.length >= 2 && _isSimilar(word, targetWord)) {
-          isMatch = true;
-          debugPrint('✅ Match por similaridade fonética: "$word" ~ "$targetWord"');
-          break;
-        }
-      }
-    }
-
-    // 5. Contém a palavra (com tolerância)
-    if (!isMatch) {
-      final cleanTarget = _removeAccents(targetWord);
-      final cleanRecognized = _removeAccents(recognized);
-      if (cleanRecognized.contains(cleanTarget)) {
-        isMatch = true;
-        debugPrint('✅ Match por contém (sem acentos)');
       }
     }
 
@@ -221,17 +156,6 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     }
   }
 
-  String _removeAccents(String text) {
-    const accents = 'áàãâäéèêëíìîïóòõôöúùûüçÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇ';
-    const noAccents = 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC';
-
-    String result = text;
-    for (int i = 0; i < accents.length; i++) {
-      result = result.replaceAll(accents[i], noAccents[i]);
-    }
-    return result;
-  }
-
   void _handleSuccess() async {
     setState(() {
       _isSuccess = true;
@@ -241,14 +165,16 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     _speechService.stopListening();
     _animationController.stop();
 
-    // 🔽 SALVAR LOG DE SUCESSO 🔽
-    await _logService.saveLog(SpeechLog(
-      pictogramId: widget.pictogram.id,
-      targetWord: widget.pictogram.label,
-      recognizedWords: _currentRecognized,
-      isSuccess: true,
-      confidence: _currentConfidence,
-    ));
+    if (_childId != null) {
+      await _logService.saveLog(SpeechLog(
+        childId: _childId!,
+        pictogramId: widget.pictogram.id,
+        targetWord: widget.pictogram.label,
+        recognizedWords: _currentRecognized,
+        isSuccess: true,
+        confidence: _currentConfidence,
+      ));
+    }
 
     await SoundManager().playSuccess();
     await _gamificationService.addStar();
@@ -264,27 +190,31 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     _speechService.stopListening();
     _animationController.stop();
 
-    // 🔽 SALVAR LOG DE PULAR (considerar como falha) 🔽
-    await _logService.saveLog(SpeechLog(
-      pictogramId: widget.pictogram.id,
-      targetWord: widget.pictogram.label,
-      recognizedWords: 'pular',
-      isSuccess: false,
-      confidence: 0.0,
-    ));
+    if (_childId != null) {
+      await _logService.saveLog(SpeechLog(
+        childId: _childId!,
+        pictogramId: widget.pictogram.id,
+        targetWord: widget.pictogram.label,
+        recognizedWords: 'pular',
+        isSuccess: false,
+        confidence: 0.0,
+      ));
+    }
 
     Navigator.of(context).pop(true);
   }
 
   void _handleCancel() async {
-    // 🔽 SALVAR LOG DE CANCELAMENTO (considerar como falha) 🔽
-    await _logService.saveLog(SpeechLog(
-      pictogramId: widget.pictogram.id,
-      targetWord: widget.pictogram.label,
-      recognizedWords: _currentRecognized.isEmpty ? 'cancelado' : _currentRecognized,
-      isSuccess: false,
-      confidence: _currentConfidence,
-    ));
+    if (_childId != null) {
+      await _logService.saveLog(SpeechLog(
+        childId: _childId!,
+        pictogramId: widget.pictogram.id,
+        targetWord: widget.pictogram.label,
+        recognizedWords: _currentRecognized.isEmpty ? 'cancelado' : _currentRecognized,
+        isSuccess: false,
+        confidence: _currentConfidence,
+      ));
+    }
     Navigator.of(context).pop(false);
   }
 
@@ -306,47 +236,22 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
             ),
             const SizedBox(height: 16),
-
-            // 🖼️ ÁREA DA IMAGEM OU ÍCONE 🖼️
             SizedBox(
               height: 120,
               width: 120,
               child: widget.pictogram.assetPath != null
-                  ? Image.asset(
-                widget.pictogram.assetPath!,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => Icon(
-                  widget.pictogram.icon,
-                  size: 80,
-                  color: Theme.of(context).primaryColor,
-                ),
-              )
-                  : Icon(
-                widget.pictogram.icon,
-                size: 80,
-                color: Theme.of(context).primaryColor,
-              ),
+                  ? Image.asset(widget.pictogram.assetPath!, fit: BoxFit.contain)
+                  : Icon(widget.pictogram.icon, size: 80, color: Theme.of(context).primaryColor),
             ),
-
             const SizedBox(height: 8),
-            Text(
-              widget.pictogram.label,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
+            Text(widget.pictogram.label, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             const SizedBox(height: 24),
-
             ElevatedButton.icon(
               onPressed: _replayAudio,
               icon: const Icon(Icons.volume_up, size: 20),
               label: const Text('Ouvir palavra'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
             ),
-
             const SizedBox(height: 24),
-
             if (_hasPlayedAudio && !_isSuccess && !_isFailed && !_isListening)
               Column(
                 children: [
@@ -354,72 +259,23 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
                     onPressed: _startListening,
                     icon: const Icon(Icons.mic),
                     label: const Text('Tentar falar'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                    ),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
                   ),
-                  TextButton(
-                    onPressed: _skipAndAdd,
-                    child: const Text('Pular e adicionar mesmo assim'),
-                  ),
+                  TextButton(onPressed: _skipAndAdd, child: const Text('Pular e adicionar mesmo assim')),
                 ],
               ),
-
             if (_isListening)
               Column(
                 children: [
-                  AnimatedBuilder(
-                    animation: _animationController,
-                    builder: (context, child) {
-                      return Container(
-                        padding: EdgeInsets.all(8 + (_animationController.value * 8)),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.blue.withOpacity(0.2),
-                        ),
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.blue,
-                          ),
-                          child: const Icon(Icons.mic, color: Colors.white, size: 40),
-                        ),
-                      );
-                    },
-                  ),
+                  const Icon(Icons.mic, color: Colors.blue, size: 40),
                   const SizedBox(height: 16),
-                  Text(
-                    _currentRecognized.isEmpty ? 'Ouvindo...' : '"$_currentRecognized"',
-                    style: const TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
-                  ),
-                  if (_showNotUnderstood)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8.0),
-                      child: Text(
-                        'Não entendi, tente novamente',
-                        style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
-                      ),
-                    ),
+                  Text(_currentRecognized.isEmpty ? 'Ouvindo...' : '"$_currentRecognized"'),
+                  if (_showNotUnderstood) const Text('Não entendi, tente novamente', style: TextStyle(color: Colors.orange)),
                 ],
               ),
-
-            if (_isSuccess)
-              const Column(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green, size: 60),
-                  SizedBox(height: 8),
-                  Text('Muito bem!', style: TextStyle(color: Colors.green, fontSize: 18, fontWeight: FontWeight.bold)),
-                ],
-              ),
-
+            if (_isSuccess) const Icon(Icons.check_circle, color: Colors.green, size: 60),
             const SizedBox(height: 24),
-            TextButton(
-              onPressed: _handleCancel,
-              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-            ),
+            TextButton(onPressed: _handleCancel, child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
           ],
         ),
       ),

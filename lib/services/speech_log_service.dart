@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'database_service.dart';
 import '../models/speech_log_model.dart';
 
@@ -13,11 +14,13 @@ class SpeechLogService {
   Future<void> _ensureTableExists() async {
     try {
       final db = await _dbService.database;
-      if (db == null) return; // SQLite não disponível (ex: Web)
+      if (db == null) return;
 
+      // Cria a tabela se não existir
       await db.execute('''
         CREATE TABLE IF NOT EXISTS speech_logs(
           id TEXT PRIMARY KEY,
+          childId TEXT,
           pictogram_id TEXT NOT NULL,
           target_word TEXT NOT NULL,
           recognized_words TEXT,
@@ -26,13 +29,33 @@ class SpeechLogService {
           timestamp TEXT NOT NULL
         )
       ''');
-      debugPrint('✅ Tabela speech_logs verificada/criada');
+
+      // 🔥 FORÇA A ADIÇÃO DA COLUNA childId CASO ELA NÃO EXISTA (Migração manual)
+      try {
+        await db.execute('ALTER TABLE speech_logs ADD COLUMN childId TEXT');
+      } catch (e) {
+        // Se a coluna já existir, ele cai aqui e ignoramos o erro
+      }
     } catch (e) {
-      debugPrint('❌ Erro ao criar tabela speech_logs: $e');
+      debugPrint('Erro ao verificar tabela speech_logs: $e');
     }
   }
 
   Future<void> saveLog(SpeechLog log) async {
+    // 1. Tenta salvar na nuvem primeiro (Garante o monitoramento do profissional)
+    try {
+      await FirebaseFirestore.instance
+          .collection('children')
+          .doc(log.childId)
+          .collection('speech_logs')
+          .doc(log.id)
+          .set(log.toMap());
+      debugPrint('✅ Log sincronizado na nuvem: ${log.targetWord}');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao sincronizar nuvem (offline?): $e');
+    }
+
+    // 2. Tenta salvar localmente
     try {
       await _ensureTableExists();
       final db = await _dbService.database;
@@ -43,108 +66,72 @@ class SpeechLogService {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
-      
-      // Sincroniza com o Firestore (opcional, se quiser logs na nuvem)
-      await _dbService.syncSpeechLogToCloud(log.toMap());
-      
-      debugPrint('✅ Log salvo: ${log.targetWord} - Sucesso: ${log.isSuccess}');
     } catch (e) {
-      debugPrint('❌ Erro ao salvar log: $e');
+      debugPrint('❌ Erro ao salvar log no SQLite: $e');
     }
   }
 
-  Future<List<SpeechLog>> getAllLogs() async {
-    await _ensureTableExists();
-    final db = await _dbService.database;
-    if (db == null) return [];
+  Future<Map<String, dynamic>> getChildStatistics(String childId) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('children')
+          .doc(childId)
+          .collection('speech_logs')
+          .get();
 
-    final List<Map<String, dynamic>> maps = await db.query(
-      'speech_logs',
-      orderBy: 'timestamp DESC',
-    );
-    return List.generate(maps.length, (i) => SpeechLog.fromMap(maps[i]));
-  }
+      if (snapshot.docs.isEmpty) {
+        return {'first_word': '-', 'easiest_word': '-', 'hardest_word': '-', 'total_attempts': 0, 'word_stats': []};
+      }
 
-  Future<List<SpeechLog>> getLogsByPictogram(String pictogramId) async {
-    await _ensureTableExists();
-    final db = await _dbService.database;
-    if (db == null) return [];
+      List<SpeechLog> logs = snapshot.docs.map((doc) => SpeechLog.fromMap(doc.data())).toList();
+      
+      Map<String, List<SpeechLog>> groupedLogs = {};
+      for (var log in logs) {
+        groupedLogs.putIfAbsent(log.targetWord, () => []).add(log);
+      }
 
-    final List<Map<String, dynamic>> maps = await db.query(
-      'speech_logs',
-      where: 'pictogram_id = ?',
-      whereArgs: [pictogramId],
-      orderBy: 'timestamp DESC',
-    );
-    return List.generate(maps.length, (i) => SpeechLog.fromMap(maps[i]));
-  }
+      List<Map<String, dynamic>> wordStats = [];
+      String easiest = '-';
+      String hardest = '-';
+      double maxSuccess = -1;
+      double minSuccess = 2;
 
-  Future<Map<String, dynamic>> getStatistics() async {
-    await _ensureTableExists();
-    final db = await _dbService.database;
-    if (db == null) {
+      groupedLogs.forEach((word, wordLogs) {
+        int successes = wordLogs.where((l) => l.isSuccess).length;
+        double rate = successes / wordLogs.length;
+        double avgConfidence = wordLogs.map((l) => l.confidence).reduce((a, b) => a + b) / wordLogs.length;
+
+        wordStats.add({
+          'word': word,
+          'success_rate': rate,
+          'attempts': wordLogs.length,
+          'avg_confidence': avgConfidence,
+        });
+
+        if (rate > maxSuccess) {
+          maxSuccess = rate;
+          easiest = word;
+        }
+        if (rate < minSuccess) {
+          minSuccess = rate;
+          hardest = word;
+        }
+      });
+
+      wordStats.sort((a, b) => b['success_rate'].compareTo(a['success_rate']));
+      logs.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+      
       return {
-        'total_attempts': 0,
-        'total_successes': 0,
-        'success_rate': 0.0,
-        'top_words': [],
-        'weekly_stats': [],
+        'first_word': logs.first.targetWord,
+        'easiest_word': easiest,
+        'hardest_word': hardest,
+        'total_attempts': logs.length,
+        'word_stats': wordStats,
+        'recent_logs': logs.reversed.take(15).toList(),
       };
+    } catch (e) {
+      debugPrint('Erro ao buscar estatísticas: $e');
+      return {'first_word': 'Erro', 'easiest_word': '-', 'hardest_word': '-', 'total_attempts': 0, 'word_stats': []};
     }
-
-    final total = Sqflite.firstIntValue(
-        await db.rawQuery('SELECT COUNT(*) FROM speech_logs')
-    ) ?? 0;
-
-    final successes = Sqflite.firstIntValue(
-        await db.rawQuery('SELECT COUNT(*) FROM speech_logs WHERE is_success = 1')
-    ) ?? 0;
-
-    final List<Map<String, dynamic>> topWords = await db.rawQuery('''
-      SELECT target_word, COUNT(*) as count, SUM(is_success) as success_count
-      FROM speech_logs
-      GROUP BY target_word
-      ORDER BY count DESC
-      LIMIT 5
-    ''');
-
-    final List<Map<String, dynamic>> weeklyStats = await db.rawQuery('''
-      SELECT 
-        strftime('%w', timestamp) as day_of_week,
-        COUNT(*) as attempts,
-        SUM(is_success) as successes
-      FROM speech_logs
-      WHERE timestamp >= datetime('now', '-7 days')
-      GROUP BY day_of_week
-      ORDER BY day_of_week
-    ''');
-
-    return {
-      'total_attempts': total,
-      'total_successes': successes,
-      'success_rate': total > 0 ? (successes / total) : 0.0,
-      'top_words': topWords,
-      'weekly_stats': weeklyStats,
-    };
-  }
-
-  Future<void> deleteAllLogs() async {
-    await _ensureTableExists();
-    final db = await _dbService.database;
-    if (db != null) await db.delete('speech_logs');
-    debugPrint('🗑️ Todos os logs de fala foram deletados');
-  }
-
-  Future<void> deleteOldLogs(DateTime beforeDate) async {
-    await _ensureTableExists();
-    final db = await _dbService.database;
-    if (db != null) {
-      await db.delete(
-        'speech_logs',
-        where: 'timestamp < ?',
-        whereArgs: [beforeDate.toIso8601String()],
-      );
-    }
-    debugPrint('🗑️ Logs anteriores a $beforeDate deletados');
   }
 }

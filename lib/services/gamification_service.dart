@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../models/user_progress_model.dart';
 import '../models/achievement_model.dart';
 import 'database_service.dart';
+import 'sync_service.dart';
+import 'auth_service.dart';
 
 class GamificationService extends ChangeNotifier {
   static final GamificationService _instance = GamificationService._internal();
@@ -16,12 +18,29 @@ class GamificationService extends ChangeNotifier {
   String? _currentProfileId;
   String? _currentChildId;
   final DatabaseService _dbService = DatabaseService();
+  final SyncService _syncService = SyncService();
+  final AuthService _authService = AuthService();
 
   static const String _storageKeyPrefix = 'user_progress_';
   final List<Function(Achievement)> _achievementListeners = [];
 
   Future<void> initializeForProfile(String profileId) async {
     _currentProfileId = profileId;
+    
+    // Tenta carregar do Firestore se estiver logado como criança
+    final user = _authService.getCurrentUser();
+    if (user != null) {
+      final userType = await _authService.getUserType(user.uid);
+      if (userType == 'child') {
+        _currentChildId = user.uid;
+        final cloudProgress = await _syncService.fetchProgress(user.uid);
+        if (cloudProgress != null) {
+          _progress = cloudProgress;
+          await _save(); // Sincroniza cache local
+        }
+      }
+    }
+
     await loadProgressForProfile(profileId);
   }
 
@@ -36,19 +55,18 @@ class GamificationService extends ChangeNotifier {
 
       if (data != null) {
         final json = jsonDecode(data);
-        _progress = UserProgress.fromJson(json);
-        // ✅ Garante que os mapas sejam modificáveis
+        final loadedProgress = UserProgress.fromJson(json);
         _progress = UserProgress(
-          userId: _progress.userId,
-          totalSessions: _progress.totalSessions,
-          totalPhrasesBuilt: _progress.totalPhrasesBuilt,
-          activeDays: List.from(_progress.activeDays),
-          pictogramUsage: Map<String, int>.from(_progress.pictogramUsage),
-          totalStars: _progress.totalStars,
-          categoryUsage: Map<String, int>.from(_progress.categoryUsage),
-          unlockedAchievementIds: List.from(_progress.unlockedAchievementIds),
+          userId: loadedProgress.userId,
+          totalSessions: loadedProgress.totalSessions,
+          totalPhrasesBuilt: loadedProgress.totalPhrasesBuilt,
+          activeDays: List.from(loadedProgress.activeDays),
+          pictogramUsage: Map<String, int>.from(loadedProgress.pictogramUsage),
+          totalStars: loadedProgress.totalStars,
+          categoryUsage: Map<String, int>.from(loadedProgress.categoryUsage),
+          unlockedAchievementIds: List.from(loadedProgress.unlockedAchievementIds),
         );
-      } else {
+      } else if (_progress.userId == 'temp_user' || _progress.userId != profileId) {
         _progress = UserProgress(userId: profileId);
       }
 
@@ -56,13 +74,17 @@ class GamificationService extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint('Erro ao carregar progresso: $e');
-      _progress = UserProgress(userId: profileId);
+      if (_progress.userId == 'temp_user') {
+        _progress = UserProgress(userId: profileId);
+      }
     }
   }
 
   Future<void> addStar() async {
     if (_currentProfileId == null) return;
     _progress.totalStars++;
+    _progress.totalPhrasesBuilt++; 
+    
     final newAchievements = _checkAndUnlockAchievements();
     await _save();
     notifyListeners();
@@ -73,15 +95,12 @@ class GamificationService extends ChangeNotifier {
       }
     }
 
-    if (_currentChildId != null) {
-      await _dbService.updateChildProgress(_currentChildId!, _progress);
-    }
+    await _syncData();
   }
 
   Future<void> registerCategoryUsage(String categoryId) async {
     if (_currentProfileId == null) return;
 
-    // ✅ Proteção extra: garante que o mapa é modificável antes de alterar
     final usage = Map<String, int>.from(_progress.categoryUsage);
     usage[categoryId] = (usage[categoryId] ?? 0) + 1;
     
@@ -99,8 +118,25 @@ class GamificationService extends ChangeNotifier {
     await _save();
     notifyListeners();
 
-    if (_currentChildId != null) {
+    await _syncData();
+  }
+
+  Future<void> _syncData() async {
+    // Se não tiver childId definido, tenta pegar o UID do usuário logado
+    if (_currentChildId == null) {
+      final user = _authService.getCurrentUser();
+      if (user != null) {
+        _currentChildId = user.uid;
+      }
+    }
+
+    if (_currentChildId != null && !_currentChildId!.startsWith('temp_')) {
+      // Salva no SQLite e Firestore (via DatabaseService)
       await _dbService.updateChildProgress(_currentChildId!, _progress);
+      // Sincroniza especificamente para o Firestore (via SyncService)
+      await _syncService.syncProgress(_currentChildId!, _progress);
+    } else {
+      debugPrint('⚠️ Sincronização ignorada: Usuário não identificado ou ID temporário ($_currentChildId)');
     }
   }
 
@@ -126,7 +162,7 @@ class GamificationService extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('$_storageKeyPrefix$_currentProfileId', jsonEncode(_progress.toJson()));
     } catch (e) {
-      debugPrint('Erro ao salvar progresso: $e');
+      debugPrint('Erro ao salvar progresso local: $e');
     }
   }
 }

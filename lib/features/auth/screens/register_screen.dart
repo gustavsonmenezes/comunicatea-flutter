@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/auth_service.dart';
 import '../../../theme/app_theme.dart';
-import '../../home/home_screen.dart';
+import '../../professional/screens/professional_dashboard_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -23,16 +23,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: AppTheme.primaryColor),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: AppTheme.primaryColor,
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Crie sua conta', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppTheme.primaryColor)),
+              const Text(
+                'Crie sua conta profissional',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
               const SizedBox(height: 8),
-              const Text('Cadastre-se como fonoaudiólogo para acompanhar seus pacientes.', style: TextStyle(fontSize: 16, color: AppTheme.textSecondaryColor)),
+              const Text(
+                'Cadastre-se como fonoaudiólogo/profissional para acompanhar as crianças no aplicativo.\n'
+                    'As contas de crianças são criadas apenas pelos profissionais.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: AppTheme.textSecondaryColor,
+                ),
+              ),
               const SizedBox(height: 32),
               Form(
                 key: _formKey,
@@ -40,15 +58,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   children: [
                     TextFormField(
                       controller: _nameController,
-                      decoration: InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), prefixIcon: const Icon(Icons.person)),
-                      validator: (value) => (value == null || value.isEmpty) ? 'Insira seu nome' : null,
+                      decoration: InputDecoration(
+                        labelText: 'Nome Completo',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(Icons.person),
+                      ),
+                      validator: (value) =>
+                      (value == null || value.isEmpty) ? 'Insira seu nome' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _emailController,
-                      decoration: InputDecoration(labelText: 'E-mail', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), prefixIcon: const Icon(Icons.email)),
+                      decoration: InputDecoration(
+                        labelText: 'E-mail profissional',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: const Icon(Icons.email),
+                      ),
                       keyboardType: TextInputType.emailAddress,
-                      validator: (value) => (value == null || !value.contains('@')) ? 'Insira um e-mail válido' : null,
+                      validator: (value) =>
+                      (value == null || !value.contains('@'))
+                          ? 'Insira um e-mail válido'
+                          : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -56,14 +90,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       obscureText: _obscurePassword,
                       decoration: InputDecoration(
                         labelText: 'Senha',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                         prefixIcon: const Icon(Icons.lock),
                         suffixIcon: IconButton(
-                          icon: Icon(_obscurePassword ? Icons.visibility : Icons.visibility_off),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                          ),
+                          onPressed: () =>
+                              setState(() => _obscurePassword = !_obscurePassword),
                         ),
                       ),
-                      validator: (value) => (value == null || value.length < 6) ? 'A senha deve ter pelo menos 6 caracteres' : null,
+                      validator: (value) =>
+                      (value == null || value.length < 6)
+                          ? 'A senha deve ter pelo menos 6 caracteres'
+                          : null,
                     ),
                     const SizedBox(height: 32),
                     _isLoading
@@ -75,10 +119,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.primaryColor,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding:
+                          const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                         ),
-                        child: const Text('CADASTRAR', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'CADASTRAR PROFISSIONAL',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -94,17 +147,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Future<void> _handleRegister() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
+
       final success = await _authService.registerProfessional(
         _emailController.text.trim(),
         _passwordController.text,
         _nameController.text.trim(),
       );
+
       setState(() => _isLoading = false);
 
       if (success && mounted) {
-        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const ProfessionalDashboardScreen()),
+              (route) => false,
+        );
       } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro ao cadastrar. Tente outro e-mail.'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erro ao cadastrar. Tente outro e-mail.'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }

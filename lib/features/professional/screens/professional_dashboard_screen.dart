@@ -7,6 +7,8 @@ import 'child_details_screen.dart';
 import '../../../models/child_profile.dart';
 import '../../../models/profile_settings_model.dart';
 import '../../../models/user_progress_model.dart';
+import '../../../services/auth_service.dart';
+import '../../../theme/app_theme.dart';
 
 class ProfessionalDashboardScreen extends StatefulWidget {
   const ProfessionalDashboardScreen({Key? key}) : super(key: key);
@@ -22,7 +24,6 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // ✅ Tenta carregar usando o UID primeiro
         context.read<ProfessionalProvider>().loadProfessionalData(user.uid);
       });
     }
@@ -34,24 +35,38 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
       builder: (context, provider, child) {
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Painel Profissional', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: const Text('Painel do Profissional'),
             backgroundColor: Colors.blue[800],
             foregroundColor: Colors.white,
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh),
-                onPressed: () => provider.loadProfessionalData(FirebaseAuth.instance.currentUser?.uid ?? ''),
+                onPressed: () {
+                  final user = FirebaseAuth.instance.currentUser;
+                  if (user != null) {
+                    provider.loadProfessionalData(user.uid);
+                  }
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: () async {
+                  await AuthService().logout();
+                  if (mounted) {
+                    Navigator.pushReplacementNamed(context, '/login');
+                  }
+                },
               ),
             ],
           ),
           body: provider.isLoading
               ? const Center(child: CircularProgressIndicator())
               : Column(
-            children: [
-              _buildStatsHeader(provider),
-              _buildChildrenList(provider, context),
-            ],
-          ),
+                  children: [
+                    _buildStatsHeader(provider),
+                    _buildChildrenList(provider, context),
+                  ],
+                ),
           floatingActionButton: FloatingActionButton.extended(
             onPressed: () => _showAddChildDialog(context, provider),
             icon: const Icon(Icons.person_add),
@@ -66,7 +81,13 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
   Widget _buildStatsHeader(ProfessionalProvider provider) {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-      decoration: BoxDecoration(color: Colors.blue[800], borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30))),
+      decoration: BoxDecoration(
+        color: Colors.blue[800],
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
@@ -79,18 +100,55 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
   }
 
   Widget _buildStatItem(String label, String value, IconData icon) {
-    return Column(children: [Icon(icon, color: Colors.white, size: 20), Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)), Text(label, style: const TextStyle(fontSize: 12, color: Colors.white70))]);
+    return Column(
+      children: [
+        Icon(icon, color: Colors.white, size: 28),
+        const SizedBox(height: 8),
+        Text(
+          value,
+          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
+    );
   }
 
   Widget _buildChildrenList(ProfessionalProvider provider, BuildContext context) {
-    if (provider.children.isEmpty) return const Expanded(child: Center(child: Text('Nenhuma criança vinculada.')));
+    if (provider.children.isEmpty) {
+      return const Expanded(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.child_care, size: 64, color: Colors.grey),
+              SizedBox(height: 16),
+              Text('Nenhuma criança vinculada.', style: TextStyle(color: Colors.grey, fontSize: 16)),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Expanded(
       child: ListView.builder(
         padding: const EdgeInsets.all(8),
         itemCount: provider.children.length,
         itemBuilder: (context, index) {
           final child = provider.children[index];
-          return ChildCard(child: child, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChildDetailsScreen(childId: child.id))));
+          return ChildCard(
+            child: child,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ChildDetailsScreen(child: child),
+                ),
+              );
+            },
+          );
         },
       ),
     );
@@ -99,42 +157,140 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
   void _showAddChildDialog(BuildContext context, ProfessionalProvider provider) {
     final nameController = TextEditingController();
     final ageController = TextEditingController();
+    final diagnosisController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool isSaving = false;
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Adicionar Nova Criança'),
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Cadastrar Nova Criança'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Nome da Criança'),
+                ),
+                TextField(
+                  controller: ageController,
+                  decoration: const InputDecoration(labelText: 'Idade'),
+                  keyboardType: TextInputType.number,
+                ),
+                TextField(
+                  controller: diagnosisController,
+                  decoration: const InputDecoration(labelText: 'Diagnóstico (opcional)'),
+                ),
+                TextField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(labelText: 'Senha de Acesso'),
+                  obscureText: true,
+                ),
+                if (isSaving)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 20),
+                    child: LinearProgressIndicator(),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      if (nameController.text.isEmpty || passwordController.text.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Nome e senha são obrigatórios')),
+                        );
+                        return;
+                      }
+
+                      setState(() => isSaving = true);
+
+                      try {
+                        final cleanName = nameController.text.toLowerCase().replaceAll(' ', '.');
+                        final childEmail = '$cleanName.${DateTime.now().millisecondsSinceEpoch}@crianca.com';
+
+                        final authService = AuthService();
+                        final userCredential = await authService.registerChild(
+                          childEmail,
+                          passwordController.text,
+                          nameController.text,
+                        );
+
+                        if (userCredential != null) {
+                          final childUid = userCredential.user!.uid;
+
+                          final newChild = ChildProfile(
+                            id: childUid,
+                            name: nameController.text,
+                            age: int.tryParse(ageController.text) ?? 0,
+                            diagnosis: diagnosisController.text,
+                            professionalIds: [FirebaseAuth.instance.currentUser!.uid],
+                            professionalEmails: [FirebaseAuth.instance.currentUser!.email ?? ''],
+                            settings: ProfileSettings(),
+                            progress: UserProgress(userId: childUid),
+                            createdAt: DateTime.now(),
+                            lastActive: DateTime.now(),
+                          );
+
+                          await provider.addChild(newChild);
+
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            _showCredentialsDialog(
+                                context, childEmail, passwordController.text, nameController.text);
+                          }
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
+                        }
+                      } finally {
+                        if (mounted) setState(() => isSaving = false);
+                      }
+                    },
+              child: const Text('Criar Criança'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCredentialsDialog(BuildContext context, String email, String password, String name) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Conta Criada com Sucesso!'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Nome *')),
-            TextField(controller: ageController, decoration: const InputDecoration(labelText: 'Idade *'), keyboardType: TextInputType.number),
+            Text('Passe estas credenciais para os responsáveis de $name:'),
+            const SizedBox(height: 16),
+            SelectableText('E-mail: $email', style: const TextStyle(fontWeight: FontWeight.bold)),
+            SelectableText('Senha: $password', style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            const Text(
+              'A criança deve usar estes dados para logar no aplicativo.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancelar')),
-          ElevatedButton(
-            onPressed: () async {
-              final user = FirebaseAuth.instance.currentUser;
-              if (user == null) return;
-
-              final childId = 'child_${DateTime.now().millisecondsSinceEpoch}';
-              final newChild = ChildProfile(
-                id: childId,
-                name: nameController.text,
-                age: int.tryParse(ageController.text) ?? 0,
-                // ✅ VINCULA TANTO O UID QUANTO O E-MAIL PARA GARANTIR A WEB
-                professionalIds: [user.uid, user.email ?? ''],
-                settings: ProfileSettings(voiceRate: 0.5, voicePitch: 1.0, highContrast: false, selectedVoice: 'pt-BR'),
-                progress: UserProgress(userId: childId, totalSessions: 0, totalPhrasesBuilt: 0, activeDays: [], pictogramUsage: {}),
-                lastActive: DateTime.now(),
-                createdAt: DateTime.now(),
-              );
-
-              await provider.addChild(newChild);
-              if (mounted) Navigator.pop(dialogContext);
-            },
-            child: const Text('Adicionar'),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
           ),
         ],
       ),

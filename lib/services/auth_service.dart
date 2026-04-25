@@ -1,57 +1,62 @@
-import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import '../models/auth_user_model.dart';
 
 class AuthService extends ChangeNotifier {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
   AuthService._internal();
 
-  final fb_auth.FirebaseAuth _auth = fb_auth.FirebaseAuth.instance;
-  AuthUser? _currentUser;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  AuthUser? get currentUser => _currentUser;
+  // Getter para o usuário atual do Firebase
+  User? get currentUser => _auth.currentUser;
   bool get isLoggedIn => _auth.currentUser != null;
 
-  Future<void> init() async {
-    await _loadCurrentUser();
+  User? getCurrentUser() {
+    return _auth.currentUser;
   }
 
-  Future<void> _loadCurrentUser() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      // Busca dados extras do profissional no Firestore se necessário
-      _currentUser = AuthUser(
-        id: user.uid,
-        username: user.email ?? '',
-        displayName: user.displayName ?? 'Profissional',
-        role: UserRole.professional, // Na Web/Mobile Profissional, assumimos fono
-        createdAt: DateTime.now(),
-      );
+  Future<String> getUserType(String uid) async {
+    try {
+      final doc = await _firestore.collection('professionals').doc(uid).get();
+      if (doc.exists) {
+        return doc.data()?['role'] ?? 'professional';
+      }
+      
+      final childDoc = await _firestore.collection('children').doc(uid).get();
+      if (childDoc.exists) {
+        return 'child';
+      }
+      
+      return 'unknown';
+    } catch (e) {
+      debugPrint('Erro ao obter tipo de usuário: $e');
+      return 'unknown';
     }
-    notifyListeners();
+  }
+
+  Future<void> init() async {
+    _auth.authStateChanges().listen((User? user) {
+      notifyListeners();
+    });
   }
 
   Future<bool> login(String email, String password) async {
     try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      
-      if (credential.user != null) {
-        await _loadCurrentUser();
-        return true;
-      }
-      return false;
+      await _auth.signInWithEmailAndPassword(email: email, password: password);
+      notifyListeners();
+      return true;
     } catch (e) {
-      debugPrint('Erro no login Firebase: $e');
+      debugPrint('Erro no login: $e');
       return false;
     }
   }
 
-  Future<bool> registerProfessional(String email, String password, String displayName) async {
+  // ✅ Método unificado para registro de profissional
+  Future<bool> registerProfessional(String email, String password, String name) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email,
@@ -59,29 +64,62 @@ class AuthService extends ChangeNotifier {
       );
 
       if (credential.user != null) {
-        await credential.user!.updateDisplayName(displayName);
-        
-        // Opcional: Criar documento na coleção 'professionals' no Firestore
-        await FirebaseFirestore.instance.collection('professionals').doc(credential.user!.uid).set({
+        await credential.user!.updateDisplayName(name);
+
+        await _firestore.collection('professionals').doc(credential.user!.uid).set({
+          'id': credential.user!.uid,
+          'name': name,
           'email': email,
-          'displayName': displayName,
           'role': 'professional',
           'createdAt': FieldValue.serverTimestamp(),
         });
-
-        await _loadCurrentUser();
-        return true;
       }
-      return false;
+
+      notifyListeners();
+      return true;
     } catch (e) {
-      debugPrint('Erro no registro Firebase: $e');
+      debugPrint('Erro no registro: $e');
       return false;
     }
   }
 
   Future<void> logout() async {
     await _auth.signOut();
-    _currentUser = null;
     notifyListeners();
+  }
+
+  // 🔥 REGISTRA CRIANÇA SEM DESLOGAR O PROFISSIONAL
+  Future<UserCredential?> registerChild(String email, String password, String name) async {
+    String appName = 'ChildRegistration_${DateTime.now().millisecondsSinceEpoch}';
+    FirebaseApp? secondaryApp;
+    try {
+      secondaryApp = await Firebase.initializeApp(
+        name: appName,
+        options: Firebase.app().options,
+      );
+
+      UserCredential credential = await FirebaseAuth.instanceFor(app: secondaryApp)
+          .createUserWithEmailAndPassword(email: email, password: password);
+
+      if (credential.user != null) {
+        await credential.user!.updateDisplayName(name);
+        
+        // Criar a flag de criança no Firestore
+        await _firestore.collection('children').doc(credential.user!.uid).set({
+          'id': credential.user!.uid,
+          'name': name,
+          'email': email,
+          'role': 'child',
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      return credential;
+    } catch (e) {
+      debugPrint('Erro ao registrar criança: $e');
+      return null;
+    } finally {
+      await secondaryApp?.delete();
+    }
   }
 }

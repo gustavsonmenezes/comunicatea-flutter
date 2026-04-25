@@ -1,317 +1,178 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../providers/professional_provider.dart';
 import '../../../models/child_profile.dart';
+import '../../../services/speech_log_service.dart';
+import '../../../models/speech_log_model.dart';
 
-class ChildDetailsScreen extends StatelessWidget {
-  final String childId;
+class ChildDetailsScreen extends StatefulWidget {
+  final ChildProfile child;
+  const ChildDetailsScreen({Key? key, required this.child}) : super(key: key);
 
-  const ChildDetailsScreen({Key? key, required this.childId}) : super(key: key);
+  @override
+  State<ChildDetailsScreen> createState() => _ChildDetailsScreenState();
+}
+
+class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
+  final SpeechLogService _logService = SpeechLogService();
+  Map<String, dynamic>? _stats;
+  bool _loadingStats = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    final stats = await _logService.getChildStatistics(widget.child.id);
+    if (mounted) {
+      setState(() {
+        _stats = stats;
+        _loadingStats = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final provider = Provider.of<ProfessionalProvider>(context, listen: false);
-
-    return FutureBuilder<ChildProfile?>(
-      future: provider.getChild(childId),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-
-        if (snapshot.hasError || snapshot.data == null) {
-          return Scaffold(
-            appBar: AppBar(
-              title: const Text('Erro'),
-              backgroundColor: Colors.blue[800],
-            ),
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                  const SizedBox(height: 16),
-                  Text('Erro ao carregar dados'),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Voltar'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        final child = snapshot.data!;
-
-        return DefaultTabController(
-          length: 3,
-          child: Scaffold(
-            appBar: AppBar(
-              title: Text(child.name),
-              backgroundColor: Colors.blue[800],
-              foregroundColor: Colors.white,
-              bottom: const TabBar(
-                indicatorColor: Colors.white,
-                tabs: [
-                  Tab(icon: Icon(Icons.person), text: 'Perfil'),
-                  Tab(icon: Icon(Icons.bar_chart), text: 'Progresso'),
-                  Tab(icon: Icon(Icons.settings), text: 'Configurações'),
-                ],
-              ),
-            ),
-            body: TabBarView(
-              children: [
-                _buildProfileTab(child),
-                _buildProgressTab(child),
-                _buildSettingsTab(child, provider, context),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildProfileTab(ChildProfile child) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Card(
-            elevation: 2,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Monitoramento: ${widget.child.name}'),
+        backgroundColor: Colors.blue[800],
+        foregroundColor: Colors.white,
+      ),
+      body: _loadingStats 
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _loadStats,
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
+              physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.blue[100],
-                    child: Text(
-                      child.name.isNotEmpty ? child.name[0].toUpperCase() : '?',
-                      style: const TextStyle(fontSize: 32, color: Colors.blue),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    child.name,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  if (child.age != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      '${child.age} anos',
-                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-                    ),
-                  ],
-                  if (child.diagnosis != null) ...[
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[50],
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        child.diagnosis!,
-                        style: TextStyle(color: Colors.blue[800]),
-                      ),
-                    ),
-                  ],
+                  _buildHighlights(),
+                  const SizedBox(height: 24),
+                  _buildWordPerformance(),
+                  const SizedBox(height: 24),
+                  _buildRecentActivity(),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          _buildInfoCard(
-            'Informações de Uso',
-            [
-              _buildInfoRow('Total de sessões', '${child.progress.totalSessions}'),
-              _buildInfoRow('Frases construídas', '${child.progress.totalPhrasesBuilt}'),
-              _buildInfoRow('Primeiro acesso', _formatDate(child.createdAt)),
-              _buildInfoRow('Último acesso', _formatDate(child.lastActive)),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _buildProgressTab(ChildProfile child) {
-    final mostUsed = child.progress.pictogramUsage.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _buildInfoCard(
-            'Resumo',
-            [
-              _buildInfoRow('Média diária',
-                  (child.progress.totalSessions / 7).toStringAsFixed(1)),
-              _buildInfoRow('Total de frases', '${child.progress.totalPhrasesBuilt}'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildInfoCard(
-            'Pictogramas Mais Usados',
-            mostUsed.isEmpty
-                ? [const Text('Nenhum dado disponível')]
-                : mostUsed.take(5).map((entry) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.blue,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(entry.key)),
-                    Text(
-                      '${entry.value}x',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
+  Widget _buildHighlights() {
+    return Row(
+      children: [
+        _highlightCard('1ª Palavra', _stats?['first_word'], Icons.star_border, Colors.orange),
+        const SizedBox(width: 8),
+        _highlightCard('Melhor Pronúncia', _stats?['easiest_word'], Icons.check_circle_outline, Colors.green),
+        const SizedBox(width: 8),
+        _highlightCard('Maior Desafio', _stats?['hardest_word'], Icons.warning_amber_rounded, Colors.red),
+      ],
     );
   }
 
-  Widget _buildSettingsTab(ChildProfile child, ProfessionalProvider provider, BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          _buildInfoCard(
-            'Preferências de Comunicação',
-            [
-              SwitchListTile(
-                title: const Text('Alto Contraste'),
-                value: child.settings.highContrast,
-                onChanged: (value) {
-                  provider.updateChildSettings(child.id, {'highContrast': value});
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Configuração atualizada!')),
-                  );
-                },
-                secondary: const Icon(Icons.contrast),
+  Widget _highlightCard(String label, String? value, IconData icon, Color color) {
+    return Expanded(
+      child: Card(
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(height: 8),
+              Text(
+                value ?? '-', 
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              const Divider(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Velocidade da Voz'),
-                  Slider(
-                    value: child.settings.voiceRate,
-                    min: 0.1,
-                    max: 1.0,
-                    divisions: 9,
-                    label: child.settings.voiceRate.toStringAsFixed(1),
-                    onChanged: (value) {
-                      provider.updateChildSettings(child.id, {'voiceRate': value});
-                    },
-                  ),
-                ],
-              ),
-              const Divider(),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Tom da Voz'),
-                  Slider(
-                    value: child.settings.voicePitch,
-                    min: 0.5,
-                    max: 2.0,
-                    divisions: 15,
-                    label: child.settings.voicePitch.toStringAsFixed(1),
-                    onChanged: (value) {
-                      provider.updateChildSettings(child.id, {'voicePitch': value});
-                    },
-                  ),
-                ],
-              ),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(fontSize: 9, color: Colors.grey[600]), textAlign: TextAlign.center),
             ],
           ),
-          const SizedBox(height: 16),
-          _buildInfoCard(
-            'Profissionais',
-            child.professionalIds.isEmpty
-                ? [const Text('Nenhum profissional vinculado')]
-                : child.professionalIds.map((id) =>
-                ListTile(
-                  leading: const Icon(Icons.medical_services),
-                  title: const Text('Profissional'),
-                  subtitle: Text('ID: $id'),
-                )
-            ).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoCard(String title, List<Widget> children) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Divider(),
-            ...children,
-          ],
         ),
       ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(color: Colors.grey[600])),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+  Widget _buildWordPerformance() {
+    final List<dynamic> wordStats = _stats?['word_stats'] ?? [];
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('DESEMPENHO POR PALAVRA', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 12)),
+        const SizedBox(height: 8),
+        if (wordStats.isEmpty) 
+          const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Sem dados de fala suficientes'))),
+        Card(
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: wordStats.length,
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (context, index) {
+              final stat = wordStats[index];
+              final double rate = stat['success_rate'];
+              
+              return ListTile(
+                title: Text(stat['word'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text('${stat['attempts']} tentativas'),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('${(rate * 100).toStringAsFixed(0)}% acerto', 
+                      style: TextStyle(color: _getRateColor(rate), fontWeight: FontWeight.bold)),
+                    SizedBox(
+                      width: 70,
+                      child: LinearProgressIndicator(
+                        value: rate,
+                        backgroundColor: Colors.grey[200],
+                        color: _getRateColor(rate),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  Color _getRateColor(double rate) {
+    if (rate >= 0.8) return Colors.green;
+    if (rate >= 0.5) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _buildRecentActivity() {
+    final List<SpeechLog> logs = _stats?['recent_logs'] ?? [];
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('HISTÓRICO RECENTE', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 12)),
+        const SizedBox(height: 8),
+        if (logs.isEmpty) const Text('Nenhuma atividade recente'),
+        ...logs.map((log) => ListTile(
+          dense: true,
+          leading: Icon(log.isSuccess ? Icons.check_circle : Icons.error_outline, 
+                       color: log.isSuccess ? Colors.green : Colors.red, size: 20),
+          title: Text(log.targetWord, style: const TextStyle(fontWeight: FontWeight.w500)),
+          subtitle: Text('Reconhecido: "${log.recognizedWords}"'),
+          trailing: Text('${log.timestamp.day}/${log.timestamp.month} ${log.timestamp.hour}:${log.timestamp.minute.toString().padLeft(2, "0")}', 
+                         style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        )).toList(),
+      ],
+    );
   }
 }

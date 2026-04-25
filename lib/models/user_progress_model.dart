@@ -1,12 +1,12 @@
 class UserProgress {
   final String userId;
-  final int totalSessions;
-  final int totalPhrasesBuilt;
+  int totalSessions;
+  int totalPhrasesBuilt;
   final Map<String, int> pictogramUsage;
   final List<DateTime> activeDays;
   final List<Session> recentSessions;
 
-  // Campos para gamificação (seus campos existentes)
+  // Campos para gamificação
   int totalStars;
   Map<String, int> categoryUsage;
   List<String> unlockedAchievementIds;
