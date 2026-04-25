@@ -20,6 +20,8 @@ dependencies:
   path: ^1.9.0
   speech_to_text: ^7.3.0
   intl: ^0.19.0
+  http: ^1.2.1 # 🔥 Adicionado para conectar com a Groq
+  # google_generative_ai: ^0.4.5 # Pode remover se não for mais usar o Gemini
 
   # Firebase
   firebase_core: ^3.11.0

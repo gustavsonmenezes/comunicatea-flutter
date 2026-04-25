@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../models/child_profile.dart';
 import '../../../services/speech_log_service.dart';
 import '../../../models/speech_log_model.dart';
+import '../../../services/ai_report_service.dart'; // 🔥 Importação do serviço de IA
 
 class ChildDetailsScreen extends StatefulWidget {
   final ChildProfile child;
@@ -13,8 +14,12 @@ class ChildDetailsScreen extends StatefulWidget {
 
 class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
   final SpeechLogService _logService = SpeechLogService();
+  final AiReportService _aiService = AiReportService(); // 🔥 Instância do serviço de IA
+  
   Map<String, dynamic>? _stats;
   bool _loadingStats = true;
+  String? _aiInsight; // 🔥 Guarda o texto da IA
+  bool _generatingAi = false; // 🔥 Controle de carregamento da IA
 
   @override
   void initState() {
@@ -28,6 +33,24 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
       setState(() {
         _stats = stats;
         _loadingStats = false;
+      });
+    }
+  }
+
+  // 🔥 Função para chamar o Gemini
+  Future<void> _generateAiInsight() async {
+    setState(() {
+      _generatingAi = true;
+      _aiInsight = null;
+    });
+
+    final List<SpeechLog> logs = _stats?['recent_logs'] ?? [];
+    final insight = await _aiService.generateClinicalInsight(widget.child, logs);
+
+    if (mounted) {
+      setState(() {
+        _aiInsight = insight;
+        _generatingAi = false;
       });
     }
   }
@@ -51,6 +74,11 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildHighlights(),
+                  const SizedBox(height: 20),
+                  
+                  // 🔥 NOVO: ÁREA DE IA GENERATIVA
+                  _buildAiInsightSection(),
+                  
                   const SizedBox(height: 24),
                   _buildWordPerformance(),
                   const SizedBox(height: 24),
@@ -59,6 +87,79 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
               ),
             ),
           ),
+    );
+  }
+
+  Widget _buildAiInsightSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_aiInsight == null && !_generatingAi)
+          ElevatedButton.icon(
+            onPressed: _generateAiInsight,
+            icon: const Icon(Icons.auto_awesome),
+            label: const Text('GERAR INSIGHT CLÍNICO COM IA'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[50],
+              foregroundColor: Colors.blue[800],
+              padding: const EdgeInsets.all(16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.blue[300]!),
+              ),
+            ),
+          ),
+        
+        if (_generatingAi)
+          Card(
+            color: Colors.blue[50],
+            child: const Padding(
+              padding: EdgeInsets.all(20.0),
+              child: Column(
+                children: [
+                  CircularProgressIndicator(strokeWidth: 2),
+                  SizedBox(height: 12),
+                  Text('O Gemini está analisando os dados de fala...', style: TextStyle(fontStyle: FontStyle.italic)),
+                ],
+              ),
+            ),
+          ),
+
+        if (_aiInsight != null)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue[800],
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
+                    SizedBox(width: 8),
+                    Text('INSIGHT DA IA (Gemini 1.5)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  _aiInsight!,
+                  style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.bottomRight,
+                  child: TextButton(
+                    onPressed: () => setState(() => _aiInsight = null),
+                    child: const Text('LIMPAR', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
