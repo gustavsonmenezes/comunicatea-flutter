@@ -20,7 +20,9 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
   Map<String, dynamic>? _stats;
   List<Map<String, dynamic>> _performanceHistory = [];
   bool _loadingStats = true;
+  
   String? _aiInsight;
+  Map<String, dynamic>? _phonologicalMap;
   bool _generatingAi = false;
 
   @override
@@ -42,24 +44,24 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
     }
   }
 
-  Future<void> _generateAiInsight() async {
+  Future<void> _generateAiAnalysis() async {
     setState(() {
       _generatingAi = true;
       _aiInsight = null;
+      _phonologicalMap = null;
     });
 
     final List<SpeechLog> logs = _stats?['recent_logs'] ?? [];
     
-    // 🔥 Agora passamos o histórico de performance (dados do gráfico) para a IA
-    final insight = await _aiService.generateClinicalInsight(
-      widget.child, 
-      logs, 
-      _performanceHistory
-    );
+    final results = await Future.wait([
+      _aiService.generateClinicalInsight(widget.child, logs, _performanceHistory),
+      _aiService.generatePhonologicalMap(logs),
+    ]);
 
     if (mounted) {
       setState(() {
-        _aiInsight = insight;
+        _aiInsight = results[0] as String;
+        _phonologicalMap = results[1] as Map<String, dynamic>;
         _generatingAi = false;
       });
     }
@@ -88,7 +90,21 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
                   const SizedBox(height: 24),
                   _buildPerformanceChart(),
                   const SizedBox(height: 24),
-                  _buildAiInsightSection(),
+                  
+                  if (_aiInsight == null && !_generatingAi)
+                    _buildAiActionButton(),
+
+                  if (_generatingAi)
+                    _buildAiLoadingState(),
+
+                  if (_aiInsight != null) ...[
+                    _buildAiInsightCard(),
+                    const SizedBox(height: 16),
+                    _buildPhonologicalMapCard(),
+                    const SizedBox(height: 16),
+                    _buildInterventionPlanCard(), // 🔥 NOVO: Plano de Intervenção
+                  ],
+                  
                   const SizedBox(height: 24),
                   _buildWordPerformance(),
                   const SizedBox(height: 24),
@@ -97,6 +113,202 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
               ),
             ),
           ),
+    );
+  }
+
+  Widget _buildInterventionPlanCard() {
+    if (_phonologicalMap == null || _phonologicalMap!['intervention'] == null) {
+      return const SizedBox.shrink();
+    }
+
+    final intervention = _phonologicalMap!['intervention'];
+    final suggestedWords = (intervention['suggested_words'] as List? ?? []);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.assignment, color: Colors.green[800], size: 20),
+              const SizedBox(width: 8),
+              Text('PLANO DE INTERVENÇÃO SUGERIDO', 
+                style: TextStyle(color: Colors.green[900], fontWeight: FontWeight.bold, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          const Text('Palavras para Treino Fonético:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: suggestedWords.map((word) => Chip(
+              label: Text(word.toString()),
+              backgroundColor: Colors.white,
+              labelStyle: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold),
+              side: BorderSide(color: Colors.green[100]!),
+            )).toList(),
+          ),
+          
+          const SizedBox(height: 16),
+          const Text('Dica Pedagógica / Técnica:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 4),
+          Text(intervention['pedagogical_tip'] ?? '', style: const TextStyle(fontSize: 14, height: 1.4)),
+          
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+            child: Row(
+              children: [
+                Icon(Icons.flag, color: Colors.orange[800], size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Meta: ${intervention['weekly_goal']}',
+                    style: TextStyle(color: Colors.orange[900], fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAiActionButton() {
+    return ElevatedButton.icon(
+      onPressed: _generateAiAnalysis,
+      icon: const Icon(Icons.auto_awesome),
+      label: const Text('GERAR ANÁLISE E PLANO DE TREINO'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blue[50],
+        foregroundColor: Colors.blue[800],
+        padding: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.blue[300]!),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAiLoadingState() {
+    return Card(
+      color: Colors.blue[50],
+      child: const Padding(
+        padding: EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            CircularProgressIndicator(strokeWidth: 2),
+            SizedBox(height: 12),
+            Text('A IA está analisando fonemas e criando o plano de treino...', 
+              style: TextStyle(fontStyle: FontStyle.italic)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAiInsightCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue[800],
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.insights, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('ANÁLISE DE TENDÊNCIA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(_aiInsight!, style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhonologicalMapCard() {
+    if (_phonologicalMap == null || _phonologicalMap!['status'] == 'sem_dados') {
+      return const SizedBox.shrink();
+    }
+
+    final patterns = (_phonologicalMap!['patterns'] as List? ?? []);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange[100]!),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.record_voice_over, color: Colors.orange[800], size: 20),
+              const SizedBox(width: 8),
+              Text('MAPEAMENTO DE SONS (FONOLOGIA)', 
+                style: TextStyle(color: Colors.orange[900], fontWeight: FontWeight.bold, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (patterns.isEmpty)
+            const Text('Nenhum padrão de troca detectado ainda.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+          
+          ...patterns.map((p) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(color: Colors.red[50], borderRadius: BorderRadius.circular(8)),
+                  child: Text(p['target'], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                ),
+                const Icon(Icons.arrow_forward, size: 16, color: Colors.grey),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(color: Colors.green[50], borderRadius: BorderRadius.circular(8)),
+                  child: Text(p['spoken'], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(p['process'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      Text('${p['count']} ocorrências', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )).toList(),
+          
+          if (_phonologicalMap!['summary'] != null) ...[
+            const Divider(),
+            Text(
+              _phonologicalMap!['summary'],
+              style: TextStyle(fontSize: 12, color: Colors.grey[800], fontStyle: FontStyle.italic),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -155,79 +367,6 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
             ),
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildAiInsightSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_aiInsight == null && !_generatingAi)
-          ElevatedButton.icon(
-            onPressed: _generateAiInsight,
-            icon: const Icon(Icons.auto_awesome),
-            label: const Text('GERAR INSIGHT CLÍNICO COM IA'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[50],
-              foregroundColor: Colors.blue[800],
-              padding: const EdgeInsets.all(16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Colors.blue[300]!),
-              ),
-            ),
-          ),
-        
-        if (_generatingAi)
-          Card(
-            color: Colors.blue[50],
-            child: const Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Column(
-                children: [
-                  CircularProgressIndicator(strokeWidth: 2),
-                  SizedBox(height: 12),
-                  Text('A IA está analisando a tendência temporal...', style: TextStyle(fontStyle: FontStyle.italic)),
-                ],
-              ),
-            ),
-          ),
-
-        if (_aiInsight != null)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.blue[800],
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
-                    SizedBox(width: 8),
-                    Text('INSIGHT DA IA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _aiInsight!,
-                  style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.4),
-                ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: TextButton(
-                    onPressed: () => setState(() => _aiInsight = null),
-                    child: const Text('LIMPAR', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                  ),
-                ),
-              ],
-            ),
-          ),
       ],
     );
   }

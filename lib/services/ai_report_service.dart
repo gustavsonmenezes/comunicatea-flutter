@@ -14,16 +14,8 @@ class AiReportService {
     List<Map<String, dynamic>> performanceHistory,
   ) async {
     try {
-      debugPrint('🚀 GROQ IA: Analisando tendência humanizada para ${child.name}...');
+      if (logs.isEmpty) return "Dados insuficientes.";
       
-      if (logs.isEmpty) {
-        return "Ainda não há dados de fala suficientes para gerar uma análise sobre o progresso de ${child.name}.";
-      }
-
-      if (_apiKey.isEmpty) {
-        return "Erro: Chave da API não configurada.";
-      }
-
       final totalTentativas = logs.length;
       final sucessos = logs.where((l) => l.isSuccess).length;
       final taxaSucesso = (sucessos / totalTentativas * 100).toStringAsFixed(0);
@@ -32,21 +24,68 @@ class AiReportService {
       String tendenciaDescricao = performanceHistory.map((h) => "${h['day']}: ${h['rate'].toStringAsFixed(0)}%").join(", ");
 
       final prompt = """
-      Você é um especialista em Fonoaudiologia e TEA com uma abordagem muito humanizada e empática. 
       Analise a evolução de ${child.name}:
-      
-      - Desempenho Geral: $taxaSucesso% de acerto em $totalTentativas atividades.
-      - Evolução nos últimos dias: $tendenciaDescricao
-      - Palavras que ele(a) está tentando dominar: ${palavrasDificies.join(', ')}
+      - Desempenho: $taxaSucesso% de acerto.
+      - Tendência: $tendenciaDescricao
+      - Palavras críticas: ${palavrasDificies.join(', ')}
 
-      Com base nesses dados, escreva uma mensagem curta (máximo 4 linhas) para o profissional que o acompanha:
-      1. Explique como está o ritmo de aprendizado de forma incentivadora.
-      2. Aponte qual a principal necessidade do aluno no momento, usando termos simples (ex: em vez de 'fonética', use 'os sons das palavras').
-      3. Sugira uma brincadeira ou atividade leve para a próxima sessão que ajude nessa evolução.
-      
-      IMPORTANTE: Use um tom acolhedor, evite termos médicos muito difíceis e trate o progresso como uma conquista. Responda em Português (PT-BR).
+      Gere um insight clínico humanizado de 3 linhas com: ritmo de aprendizado, foco atual e uma dica de atividade.
       """;
 
+      return await _callGroq(prompt, "Você é um fonoaudiólogo mentor.");
+    } catch (e) {
+      return "Erro ao gerar análise: $e";
+    }
+  }
+
+  // 🔥 MAPEAMENTO + PLANO DE INTERVENÇÃO (Tudo em um só JSON)
+  Future<Map<String, dynamic>> generatePhonologicalMap(List<SpeechLog> logs) async {
+    try {
+      final failedLogs = logs.where((l) => !l.isSuccess && l.recognizedWords != null && l.recognizedWords!.isNotEmpty).toList();
+      
+      if (failedLogs.isEmpty) return {'status': 'sem_dados'};
+
+      final String dadosFala = failedLogs.map((l) => "Alvo: '${l.targetWord}', Falado: '${l.recognizedWords}'").join("; ");
+
+      final prompt = """
+      Analise estas trocas de sons na fala de uma criança:
+      $dadosFala
+
+      1. Identifique os padrões de substituição (ex: troca G por T).
+      2. Crie um PLANO DE INTERVENÇÃO prático.
+
+      Retorne APENAS um JSON no seguinte formato:
+      {
+        "patterns": [
+          {"target": "G", "spoken": "T", "count": 2, "process": "Frontalização"}
+        ],
+        "summary": "Breve explicação técnica",
+        "intervention": {
+          "suggested_words": ["Gato", "Gota", "Galo"],
+          "pedagogical_tip": "Uma dica técnica para o fonoaudiólogo usar na sessão",
+          "weekly_goal": "Meta para a semana"
+        }
+      }
+      """;
+
+      final response = await _callGroq(prompt, "Você é um especialista em fonética clínica e intervenção precoce.");
+      
+      final jsonStart = response.indexOf('{');
+      if (jsonStart == -1) return {'status': 'erro'};
+
+      final jsonEnd = response.lastIndexOf('}') + 1;
+      final jsonString = response.substring(jsonStart, jsonEnd);
+      
+      return jsonDecode(jsonString);
+    } catch (e) {
+      return {'status': 'erro'};
+    }
+  }
+
+  Future<String> _callGroq(String prompt, String systemRole) async {
+    if (_apiKey.isEmpty) return "Erro: Chave da API não configurada.";
+
+    try {
       final response = await http.post(
         Uri.parse(_baseUrl),
         headers: {
@@ -56,13 +95,10 @@ class AiReportService {
         body: jsonEncode({
           "model": "llama-3.3-70b-versatile",
           "messages": [
-            {
-              "role": "system", 
-              "content": "Você é um mentor fonoaudiólogo que acredita na comunicação afetuosa e clara."
-            },
+            {"role": "system", "content": systemRole},
             {"role": "user", "content": prompt}
           ],
-          "temperature": 0.7, // Aumentei um pouco para a fala ficar mais natural e menos rígida
+          "temperature": 0.1,
         }),
       );
 
@@ -70,11 +106,10 @@ class AiReportService {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         return data['choices'][0]['message']['content'].trim();
       } else {
-        return "No momento, não consegui analisar os dados. Por favor, tente novamente em instantes.";
+        return "Erro na API: ${response.statusCode}";
       }
-
     } catch (e) {
-      return "Houve um problema na conexão com a análise. Verifique sua internet.";
+      return "Erro de conexão.";
     }
   }
 
@@ -85,10 +120,6 @@ class AiReportService {
         falhas[log.targetWord] = (falhas[log.targetWord] ?? 0) + 1;
       }
     }
-    return falhas.entries
-        .where((e) => e.value >= 1)
-        .map((e) => e.key)
-        .take(3)
-        .toList();
+    return falhas.entries.where((e) => e.value >= 1).map((e) => e.key).take(3).toList();
   }
 }
