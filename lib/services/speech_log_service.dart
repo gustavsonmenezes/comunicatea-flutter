@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'database_service.dart';
 import '../models/speech_log_model.dart';
+import 'package:intl/intl.dart';
 
 class SpeechLogService {
   static final SpeechLogService _instance = SpeechLogService._internal();
@@ -16,7 +17,6 @@ class SpeechLogService {
       final db = await _dbService.database;
       if (db == null) return;
 
-      // Cria a tabela se não existir
       await db.execute('''
         CREATE TABLE IF NOT EXISTS speech_logs(
           id TEXT PRIMARY KEY,
@@ -30,19 +30,15 @@ class SpeechLogService {
         )
       ''');
 
-      // 🔥 FORÇA A ADIÇÃO DA COLUNA childId CASO ELA NÃO EXISTA (Migração manual)
       try {
         await db.execute('ALTER TABLE speech_logs ADD COLUMN childId TEXT');
-      } catch (e) {
-        // Se a coluna já existir, ele cai aqui e ignoramos o erro
-      }
+      } catch (e) {}
     } catch (e) {
       debugPrint('Erro ao verificar tabela speech_logs: $e');
     }
   }
 
   Future<void> saveLog(SpeechLog log) async {
-    // 1. Tenta salvar na nuvem primeiro (Garante o monitoramento do profissional)
     try {
       await FirebaseFirestore.instance
           .collection('children')
@@ -50,24 +46,72 @@ class SpeechLogService {
           .collection('speech_logs')
           .doc(log.id)
           .set(log.toMap());
-      debugPrint('✅ Log sincronizado na nuvem: ${log.targetWord}');
     } catch (e) {
-      debugPrint('⚠️ Erro ao sincronizar nuvem (offline?): $e');
+      debugPrint('⚠️ Erro nuvem: $e');
     }
 
-    // 2. Tenta salvar localmente
     try {
       await _ensureTableExists();
       final db = await _dbService.database;
       if (db != null) {
-        await db.insert(
-          'speech_logs',
-          log.toMap(),
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        await db.insert('speech_logs', log.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
       }
     } catch (e) {
-      debugPrint('❌ Erro ao salvar log no SQLite: $e');
+      debugPrint('❌ Erro SQLite: $e');
+    }
+  }
+
+  // 🔥 NOVO MÉTODO PARA O MESTRADO: Busca histórico de performance para o gráfico
+  Future<List<Map<String, dynamic>>> getPerformanceHistory(String childId, {int days = 7}) async {
+    try {
+      final now = DateTime.now();
+      final startDate = now.subtract(Duration(days: days));
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('children')
+          .doc(childId)
+          .collection('speech_logs')
+          .where('timestamp', isGreaterThanOrEqualTo: startDate.toIso8601String())
+          .get();
+
+      if (snapshot.docs.isEmpty) return [];
+
+      List<SpeechLog> logs = snapshot.docs.map((doc) => SpeechLog.fromMap(doc.data())).toList();
+      
+      // Agrupa logs por dia
+      Map<String, List<SpeechLog>> groupedByDay = {};
+      for (var log in logs) {
+        final dateKey = DateFormat('dd/MM').format(log.timestamp);
+        groupedByDay.putIfAbsent(dateKey, () => []).add(log);
+      }
+
+      // Calcula a porcentagem de acerto de cada dia
+      List<Map<String, dynamic>> history = [];
+      
+      // Criamos uma lista dos últimos 'days' dias para garantir que dias sem treino apareçam como 0%
+      for (int i = days - 1; i >= 0; i--) {
+        final date = now.subtract(Duration(days: i));
+        final dateKey = DateFormat('dd/MM').format(date);
+        
+        final dayLogs = groupedByDay[dateKey] ?? [];
+        double successRate = 0;
+        
+        if (dayLogs.isNotEmpty) {
+          int successes = dayLogs.where((l) => l.isSuccess).length;
+          successRate = (successes / dayLogs.length) * 100;
+        }
+
+        history.add({
+          'day': dateKey,
+          'rate': successRate,
+          'count': dayLogs.length,
+        });
+      }
+
+      return history;
+    } catch (e) {
+      debugPrint('Erro ao buscar histórico: $e');
+      return [];
     }
   }
 

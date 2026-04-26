@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../../models/child_profile.dart';
 import '../../../services/speech_log_service.dart';
 import '../../../models/speech_log_model.dart';
-import '../../../services/ai_report_service.dart'; // 🔥 Importação do serviço de IA
+import '../../../services/ai_report_service.dart';
 
 class ChildDetailsScreen extends StatefulWidget {
   final ChildProfile child;
@@ -14,12 +15,13 @@ class ChildDetailsScreen extends StatefulWidget {
 
 class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
   final SpeechLogService _logService = SpeechLogService();
-  final AiReportService _aiService = AiReportService(); // 🔥 Instância do serviço de IA
+  final AiReportService _aiService = AiReportService();
   
   Map<String, dynamic>? _stats;
+  List<Map<String, dynamic>> _performanceHistory = [];
   bool _loadingStats = true;
-  String? _aiInsight; // 🔥 Guarda o texto da IA
-  bool _generatingAi = false; // 🔥 Controle de carregamento da IA
+  String? _aiInsight;
+  bool _generatingAi = false;
 
   @override
   void initState() {
@@ -29,15 +31,17 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
 
   Future<void> _loadStats() async {
     final stats = await _logService.getChildStatistics(widget.child.id);
+    final history = await _logService.getPerformanceHistory(widget.child.id);
+    
     if (mounted) {
       setState(() {
         _stats = stats;
+        _performanceHistory = history;
         _loadingStats = false;
       });
     }
   }
 
-  // 🔥 Função para chamar o Gemini
   Future<void> _generateAiInsight() async {
     setState(() {
       _generatingAi = true;
@@ -45,7 +49,13 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
     });
 
     final List<SpeechLog> logs = _stats?['recent_logs'] ?? [];
-    final insight = await _aiService.generateClinicalInsight(widget.child, logs);
+    
+    // 🔥 Agora passamos o histórico de performance (dados do gráfico) para a IA
+    final insight = await _aiService.generateClinicalInsight(
+      widget.child, 
+      logs, 
+      _performanceHistory
+    );
 
     if (mounted) {
       setState(() {
@@ -58,8 +68,9 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: Text('Monitoramento: ${widget.child.name}'),
+        title: Text(widget.child.name),
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
       ),
@@ -74,11 +85,10 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildHighlights(),
-                  const SizedBox(height: 20),
-                  
-                  // 🔥 NOVO: ÁREA DE IA GENERATIVA
+                  const SizedBox(height: 24),
+                  _buildPerformanceChart(),
+                  const SizedBox(height: 24),
                   _buildAiInsightSection(),
-                  
                   const SizedBox(height: 24),
                   _buildWordPerformance(),
                   const SizedBox(height: 24),
@@ -87,6 +97,65 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
               ),
             ),
           ),
+    );
+  }
+
+  Widget _buildPerformanceChart() {
+    if (_performanceHistory.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('EVOLUÇÃO DOS ÚLTIMOS 7 DIAS', 
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 12)),
+        const SizedBox(height: 12),
+        Container(
+          height: 200,
+          padding: const EdgeInsets.fromLTRB(8, 24, 24, 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+          ),
+          child: LineChart(
+            LineChartData(
+              gridData: const FlGridData(show: false),
+              titlesData: FlTitlesData(
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (value, meta) {
+                      int index = value.toInt();
+                      if (index < 0 || index >= _performanceHistory.length) return const SizedBox();
+                      return Text(_performanceHistory[index]['day'], style: const TextStyle(fontSize: 10, color: Colors.grey));
+                    },
+                  ),
+                ),
+              ),
+              borderData: FlBorderData(show: false),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: _performanceHistory.asMap().entries.map((e) {
+                    return FlSpot(e.key.toDouble(), e.value['rate']);
+                  }).toList(),
+                  isCurved: true,
+                  color: Colors.blue[800],
+                  barWidth: 4,
+                  dotData: const FlDotData(show: true),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: Colors.blue[800]!.withOpacity(0.1),
+                  ),
+                ),
+              ],
+              minY: 0,
+              maxY: 100,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -119,7 +188,7 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
                 children: [
                   CircularProgressIndicator(strokeWidth: 2),
                   SizedBox(height: 12),
-                  Text('O Gemini está analisando os dados de fala...', style: TextStyle(fontStyle: FontStyle.italic)),
+                  Text('A IA está analisando a tendência temporal...', style: TextStyle(fontStyle: FontStyle.italic)),
                 ],
               ),
             ),
@@ -140,7 +209,7 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
                   children: [
                     Icon(Icons.auto_awesome, color: Colors.amber, size: 20),
                     SizedBox(width: 8),
-                    Text('INSIGHT DA IA (Gemini 1.5)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                    Text('INSIGHT DA IA', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -178,7 +247,8 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
   Widget _highlightCard(String label, String? value, IconData icon, Color color) {
     return Expanded(
       child: Card(
-        elevation: 2,
+        elevation: 0,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey[200]!)),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
           child: Column(
@@ -212,6 +282,8 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
         if (wordStats.isEmpty) 
           const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('Sem dados de fala suficientes'))),
         Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey[200]!)),
           child: ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
