@@ -38,7 +38,32 @@ class AiReportService {
     }
   }
 
-  // 🔥 MAPEAMENTO + PLANO DE INTERVENÇÃO (Tudo em um só JSON)
+  // 🔥 NOVO MÉTODO: Resumo para os Pais
+  Future<Map<String, dynamic>> generateParentReport(ChildProfile child, List<SpeechLog> logs) async {
+    try {
+      final prompt = """
+      Com base nestes dados de fala da criança ${child.name}:
+      ${logs.take(10).map((l) => l.targetWord).join(", ")}
+
+      Crie um resumo encorajador para os pais.
+      Retorne APENAS um JSON:
+      {
+        "message": "Mensagem motivadora curta",
+        "highlight": "A maior conquista da semana (ex: Melhorou no som do R)",
+        "home_activity": "Uma brincadeira simples para fazer em casa para ajudar na fala",
+        "word_of_the_week": "A palavra principal para praticar"
+      }
+      """;
+
+      final response = await _callGroq(prompt, "Você é um psicopedagogo acolhedor.");
+      final jsonStart = response.indexOf('{');
+      if (jsonStart == -1) return {};
+      return jsonDecode(response.substring(jsonStart, response.lastIndexOf('}') + 1));
+    } catch (e) {
+      return {};
+    }
+  }
+
   Future<Map<String, dynamic>> generatePhonologicalMap(List<SpeechLog> logs) async {
     try {
       final failedLogs = logs.where((l) => !l.isSuccess && l.recognizedWords != null && l.recognizedWords!.isNotEmpty).toList();

@@ -4,6 +4,7 @@ import '../../../models/child_profile.dart';
 import '../../../services/speech_log_service.dart';
 import '../../../models/speech_log_model.dart';
 import '../../../services/ai_report_service.dart';
+import '../../../services/report_service.dart'; // 🔥 NOVO
 
 class ChildDetailsScreen extends StatefulWidget {
   final ChildProfile child;
@@ -16,6 +17,7 @@ class ChildDetailsScreen extends StatefulWidget {
 class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
   final SpeechLogService _logService = SpeechLogService();
   final AiReportService _aiService = AiReportService();
+  final ReportService _reportService = ReportService(); // 🔥 NOVO
   
   Map<String, dynamic>? _stats;
   List<Map<String, dynamic>> _performanceHistory = [];
@@ -23,7 +25,9 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
   
   String? _aiInsight;
   Map<String, dynamic>? _phonologicalMap;
+  Map<String, dynamic>? _parentReportData; // 🔥 NOVO: Para guardar o que vai para os pais
   bool _generatingAi = false;
+  bool _sendingToParent = false;
 
   @override
   void initState() {
@@ -53,17 +57,37 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
 
     final List<SpeechLog> logs = _stats?['recent_logs'] ?? [];
     
+    // 🔥 Agora geramos também a versão dos pais no mesmo processo
     final results = await Future.wait([
       _aiService.generateClinicalInsight(widget.child, logs, _performanceHistory),
       _aiService.generatePhonologicalMap(logs),
+      _aiService.generateParentReport(widget.child, logs),
     ]);
 
     if (mounted) {
       setState(() {
         _aiInsight = results[0] as String;
         _phonologicalMap = results[1] as Map<String, dynamic>;
+        _parentReportData = results[2] as Map<String, dynamic>;
         _generatingAi = false;
       });
+    }
+  }
+
+  Future<void> _sendToParent() async {
+    if (_parentReportData == null) return;
+    
+    setState(() => _sendingToParent = true);
+    final success = await _reportService.sendReportToParent(widget.child.id, _parentReportData!);
+    
+    if (mounted) {
+      setState(() => _sendingToParent = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Relatório enviado com sucesso para a família!' : 'Erro ao enviar relatório.'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
     }
   }
 
@@ -98,11 +122,13 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
                     _buildAiLoadingState(),
 
                   if (_aiInsight != null) ...[
+                    _buildSendToParentButton(), // 🔥 BOTÃO DE ENVIO
+                    const SizedBox(height: 16),
                     _buildAiInsightCard(),
                     const SizedBox(height: 16),
                     _buildPhonologicalMapCard(),
                     const SizedBox(height: 16),
-                    _buildInterventionPlanCard(), // 🔥 NOVO: Plano de Intervenção
+                    _buildInterventionPlanCard(),
                   ],
                   
                   const SizedBox(height: 24),
@@ -113,6 +139,26 @@ class _ChildDetailsScreenState extends State<ChildDetailsScreen> {
               ),
             ),
           ),
+    );
+  }
+
+  Widget _buildSendToParentButton() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: ElevatedButton.icon(
+        onPressed: _sendingToParent ? null : _sendToParent,
+        icon: _sendingToParent 
+          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          : const Icon(Icons.send),
+        label: Text(_sendingToParent ? 'ENVIANDO...' : 'ENVIAR PARA A FAMÍLIA'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.purple[700],
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
     );
   }
 

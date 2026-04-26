@@ -4,6 +4,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../services/auth_service.dart';
 import '../../communication/communication_screen.dart';
 import '../../professional/screens/professional_dashboard_screen.dart';
+import '../../settings/parent_dashboard_screen.dart';
+import '../../../models/child_profile.dart';
+import '../../../models/profile_settings_model.dart';
+import '../../../models/user_progress_model.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -27,9 +31,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleLogin() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Por favor, preencha todos os campos.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preencha os campos.')));
       return;
     }
 
@@ -45,33 +47,52 @@ class _LoginScreenState extends State<LoginScreen> {
       if (success) {
         final user = authService.currentUser;
         if (user != null) {
-          // 🔥 VERIFICA O TIPO DE USUÁRIO PARA REDIRECIONAR CORRETAMENTE
+          // 🔥 BUSCA O TIPO DE USUÁRIO REAL
           final userType = await authService.getUserType(user.uid);
           
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('currentChildId', user.uid);
-
           if (mounted) {
             setState(() => _isLoading = false);
             
+            debugPrint('🚀 Redirecionando usuário do tipo: $userType');
+
             if (userType == 'professional') {
-              // Profissional -> Dashboard de Monitoramento
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(builder: (_) => const ProfessionalDashboardScreen()),
               );
-            } else {
-              // Criança -> Área de Jogos (Pictogramas)
+            } else if (userType == 'parent') {
+              final childId = await authService.getParentChildId(user.uid);
+              debugPrint('👨‍👩‍👦 Pai logado. ID da criança vinculada: $childId');
+              
+              if (childId != null) {
+                final child = ChildProfile(
+                  id: childId, 
+                  name: 'Carregando...', 
+                  age: 0,
+                  settings: ProfileSettings(),
+                  progress: UserProgress(userId: childId),
+                );
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(builder: (_) => ParentDashboardScreen(child: child)),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pai sem criança vinculada.')));
+              }
+            } else if (userType == 'child') {
+              // É uma criança
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setString('currentChildId', user.uid);
               Navigator.of(context).pushReplacement(
                 MaterialPageRoute(builder: (_) => const CommunicationScreen()),
               );
+            } else {
+              // Caso não encontre (unknown)
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tipo de usuário não reconhecido.')));
             }
           }
         }
       } else {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Erro ao realizar login. Verifique suas credenciais.')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Falha no login.')));
       }
     }
   }
@@ -87,57 +108,24 @@ class _LoginScreenState extends State<LoginScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.chat_bubble_outline, size: 80, color: Colors.blue[800]),
-              const SizedBox(height: 24),
-              Text(
-                'COMUNICA-TEA',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue[800],
-                ),
-              ),
+              const SizedBox(height: 12),
+              Text('COMUNICA-TEA', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue[800])),
               const SizedBox(height: 48),
-              TextField(
-                controller: _emailController,
-                decoration: const InputDecoration(
-                  labelText: 'E-mail',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.email),
-                ),
-                keyboardType: TextInputType.emailAddress,
-              ),
+              TextField(controller: _emailController, decoration: const InputDecoration(labelText: 'E-mail', border: OutlineInputBorder())),
               const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                decoration: const InputDecoration(
-                  labelText: 'Senha',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.lock),
-                ),
-                obscureText: true,
-              ),
+              TextField(controller: _passwordController, decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder()), obscureText: true),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _handleLogin,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[800],
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('ENTRAR', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('ENTRAR'),
                 ),
               ),
-              const SizedBox(height: 16),
               TextButton(
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
-                },
-                child: const Text('Sou Profissional e não tenho conta'),
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                child: const Text('Criar conta'),
               ),
             ],
           ),

@@ -1,79 +1,69 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
-import '../../services/settings_service.dart';
+import '../../models/child_profile.dart';
+import 'parent_dashboard_screen.dart';
 
-class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
-
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  final SettingsService _settings = SettingsService();
-
-  @override
-  void initState() {
-    super.initState();
-    _settings.init();
-  }
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Para teste, vamos usar um perfil fixo ou buscar do provider/banco
+    // No seu app real, você pegaria o perfil da criança logada
+    final childMock = ChildProfile(
+      id: 'child123', 
+      name: 'Joãozinho', 
+      age: 5,
+      gender: 'Masculino',
+      level: 'Nível 1'
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Configurações'),
-        backgroundColor: AppTheme.primaryColor,
+        backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
       ),
       body: ListView(
         children: [
-          // 🔽 BOTÃO DE ESTATÍSTICAS DE FALA 🔽
-          Card(
-            margin: const EdgeInsets.all(16),
-            child: ListTile(
-              leading: const Icon(Icons.analytics, color: AppTheme.primaryColor),
-              title: const Text('Estatísticas de Fala'),
-              subtitle: const Text('Veja o progresso da criança'),
-              trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-              onTap: () {
-                Navigator.pushNamed(context, '/speech_stats');
-              },
-            ),
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text('ÁREA DA FAMÍLIA', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
           ),
-
-          Card(
-            margin: const EdgeInsets.all(16),
-            child: SwitchListTile(
-              title: const Text('Síntese de voz'),
-              subtitle: const Text('Ativar fala automática'),
-              value: _settings.autoSpeak,
-              onChanged: (val) {
-                _settings.setAutoSpeak(val);
-                setState(() {});
-              },
-              activeColor: AppTheme.primaryColor,
+          ListTile(
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.purple[50], shape: BoxShape.circle),
+              child: Icon(Icons.family_restroom, color: Colors.purple[800]),
             ),
+            title: const Text('Painel de Acompanhamento'),
+            subtitle: const Text('Veja o progresso e atividades para casa'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => ParentDashboardScreen(child: childMock)),
+              );
+            },
           ),
-          Card(
-            margin: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                ListTile(
-                  title: const Text('Velocidade da voz'),
-                  subtitle: Slider(
-                    value: _settings.voiceSpeed,
-                    min: 0.3,
-                    max: 1.0,
-                    divisions: 7,
-                    onChanged: (val) {
-                      _settings.setVoiceSpeed(val);
-                      setState(() {});
-                    },
-                  ),
-                ),
-              ],
-            ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text('OPÇÕES DO APLICATIVO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.person_outline),
+            title: const Text('Perfil do Aluno'),
+            onTap: () {},
+          ),
+          ListTile(
+            leading: const Icon(Icons.volume_up_outlined),
+            title: const Text('Configurações de Voz'),
+            onTap: () {},
+          ),
+          ListTile(
+            leading: const Icon(Icons.lock_outline),
+            title: const Text('Modo Profissional (Senha)'),
+            onTap: () {},
           ),
         ],
       ),
