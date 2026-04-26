@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "367358880184",
+    "project_id": "comunica-tea-ifpe",
+    "storage_bucket": "comunica-tea-ifpe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:367358880184:android:e171ca5c25614f1575474d",
+        "android_client_info": {
+          "package_name": "br.ifpe.palmares.comunica_tea"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBFbI7gsts_tHIhOR5jviNwnFV7pgDkgI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
