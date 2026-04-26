@@ -5,20 +5,15 @@ import '../models/speech_log_model.dart';
 import '../models/child_profile.dart';
 
 class AiReportService {
-  // 🔥 INSIRA SUA API KEY DA GROQ CLOUD ABAIXO
   static const String _apiKey = "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";
   static const String _baseUrl = "https://api.groq.com/openai/v1/chat/completions";
 
   Future<String> generateClinicalInsight(ChildProfile child, List<SpeechLog> logs) async {
     try {
-      debugPrint('🚀 GROQ IA: Iniciando geração com Llama 3 para ${child.name}...');
+      debugPrint('🚀 GROQ IA: Gerando plano de intervenção para ${child.name}...');
       
       if (logs.isEmpty) {
         return "Ainda não há dados de fala suficientes para gerar um relatório sobre este aluno.";
-      }
-
-      if (_apiKey == "SUA_GROQ_API_KEY_AQUI") {
-        return "Erro: API Key da Groq não configurada no serviço.";
       }
 
       final totalTentativas = logs.length;
@@ -26,16 +21,19 @@ class AiReportService {
       final taxaSucesso = (sucessos / totalTentativas * 100).toStringAsFixed(1);
       final palavrasDificies = _identificarPalavrasDificies(logs);
 
+      // 🔥 Prompt aprimorado para focar em ÁREAS DE INTERVENÇÃO
       final prompt = """
-      Você é um assistente de Fonoaudiologia especializado em TEA.
-      Analise os dados de uso de um aplicativo de comunicação:
+      Você é um especialista em Fonoaudiologia e TEA. Analise estes dados:
       - Aluno: ${child.name}
-      - Total de palavras: $totalTentativas
-      - Taxa de acerto: $taxaSucesso%
-      - Palavras com dificuldade: ${palavrasDificies.join(', ')}
+      - Desempenho: $taxaSucesso% de acerto em $totalTentativas tentativas.
+      - Palavras críticas (erros repetidos): ${palavrasDificies.join(', ')}
 
-      Escreva um insight clínico curto (máximo 3 frases). Seja profissional e empático. 
-      Responda em português brasileiro.
+      Com base nisso, gere um insight clínico de no máximo 4 linhas que responda:
+      1. Qual a provável área de dificuldade (ex: fonemas específicos, coordenação motora de fala ou compreensão semântica)?
+      2. Em qual área específica o profissional deve focar a intervenção agora para melhorar o desempenho deste aluno?
+      3. Sugira uma atividade ou estímulo prático para essa área.
+      
+      Seja técnico, direto e use o termo 'o aluno'. Responda em Português (PT-BR).
       """;
 
       final response = await http.post(
@@ -45,28 +43,28 @@ class AiReportService {
           "Content-Type": "application/json",
         },
         body: jsonEncode({
-          "model": "llama-3.3-70b-versatile", // Modelo ultra rápido da Groq
+          "model": "llama-3.3-70b-versatile",
           "messages": [
-            {"role": "system", "content": "Você é um fonoaudiólogo especialista em TEA experiente."},
+            {
+              "role": "system", 
+              "content": "Você é um supervisor clínico de fonoaudiologia. Seu objetivo é orientar o profissional de ponta sobre onde focar o tratamento."
+            },
             {"role": "user", "content": prompt}
           ],
-          "temperature": 0.7,
+          "temperature": 0.6, // Um pouco mais baixo para ser mais assertivo/técnico
         }),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes));
         final content = data['choices'][0]['message']['content'];
-        debugPrint('✅ GROQ IA: Resposta recebida com sucesso!');
         return content.trim();
       } else {
-        debugPrint('❌ GROQ IA: Erro ${response.statusCode}: ${response.body}');
-        return "O serviço de IA está temporariamente indisponível. (Erro: ${response.statusCode})";
+        return "Erro na IA (${response.statusCode}). Tente novamente.";
       }
 
     } catch (e) {
-      debugPrint('💥 GROQ IA: ERRO: $e');
-      return "Não foi possível conectar ao serviço de IA. Verifique sua conexão.";
+      return "Erro de conexão: $e";
     }
   }
 

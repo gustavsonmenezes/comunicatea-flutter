@@ -23,19 +23,17 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   final FlutterTts _flutterTts = FlutterTts();
   final SpeechLogService _logService = SpeechLogService();
 
-  late AnimationController _animationController;
   bool _isSuccess = false;
-  bool _isFailed = false;
   bool _isListening = false;
   bool _showNotUnderstood = false;
   double _currentConfidence = 0.0;
   String _currentRecognized = '';
   String? _childId;
+  int _attempts = 0; // 🔥 Contador de tentativas
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
     _initAndPlayAudio();
     _loadChildId();
   }
@@ -47,7 +45,6 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
 
   @override
   void dispose() {
-    _animationController.dispose();
     _speechService.cancelListening();
     _flutterTts.stop();
     super.dispose();
@@ -56,7 +53,6 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   Future<void> _initAndPlayAudio() async {
     await _flutterTts.setLanguage("pt-BR");
     await _flutterTts.speak(widget.pictogram.label);
-    if (mounted) setState(() {});
   }
 
   void _startListening() async {
@@ -81,27 +77,25 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
           }
       );
 
-      // Timeout de segurança: se após 5 segundos ouvindo não houver sucesso, mostra erro
+      // Timeout de segurança: Se após 5 segundos não houver sucesso
       Future.delayed(const Duration(seconds: 5), () {
-        if (mounted && _isListening && !_isSuccess && _currentRecognized.isNotEmpty) {
-          _triggerNotUnderstood();
+        if (mounted && _isListening && !_isSuccess) {
+          _handleFailure(); // 🔥 Agora registra falha no timeout
         }
       });
     }
   }
 
   void _checkMatch(String spokenWords) {
-    if (_isSuccess || _isFailed || spokenWords.isEmpty) return;
+    if (_isSuccess || spokenWords.isEmpty) return;
 
     final targetWord = _normalize(widget.pictogram.label);
     final recognized = _normalize(spokenWords);
 
     bool isMatch = false;
-
-    // Rigor Equilibrado: Exato ou Confiança > 85% com similaridade básica
     if (recognized == targetWord) {
       isMatch = true;
-    } else if (_currentConfidence > 0.85 && (recognized.contains(targetWord) || targetWord.contains(recognized))) {
+    } else if (_currentConfidence > 0.80 && (recognized.contains(targetWord) || targetWord.contains(recognized))) {
       isMatch = true;
     }
 
@@ -110,13 +104,31 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     }
   }
 
-  void _triggerNotUnderstood() {
-    if (!mounted) return;
+  // 🔥 NOVA FUNÇÃO: Registra que a criança errou ou não foi entendida
+  void _handleFailure() async {
+    if (!mounted || _isSuccess) return;
+
     setState(() {
       _showNotUnderstood = true;
       _isListening = false;
+      _attempts++;
     });
+
     _speechService.stopListening();
+    await SoundManager().playError();
+
+    // Registra o log de erro para a IA analisar
+    if (_childId != null) {
+      await _logService.saveLog(SpeechLog(
+        childId: _childId!,
+        pictogramId: widget.pictogram.id,
+        targetWord: widget.pictogram.label,
+        recognizedWords: _currentRecognized.isEmpty ? "(Silêncio/Ruído)" : _currentRecognized,
+        isSuccess: false, // ❌ Sucesso: Falso
+        confidence: _currentConfidence,
+      ));
+    }
+
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _showNotUnderstood = false);
     });
@@ -135,6 +147,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   void _handleSuccess() async {
     setState(() { _isSuccess = true; _isListening = false; });
     _speechService.stopListening();
+    
     if (_childId != null) {
       await _logService.saveLog(SpeechLog(
         childId: _childId!,
@@ -145,6 +158,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
         confidence: _currentConfidence,
       ));
     }
+    
     await SoundManager().playSuccess();
     await _gamificationService.addStar();
     Future.delayed(const Duration(seconds: 1), () {
@@ -176,8 +190,12 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
               ElevatedButton.icon(
                 onPressed: _startListening,
                 icon: const Icon(Icons.mic),
-                label: const Text('TOCAR PARA FALAR'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.all(16)),
+                label: Text(_attempts > 0 ? 'TENTAR NOVAMENTE' : 'TOCAR PARA FALAR'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _attempts > 0 ? Colors.orange : Colors.green, 
+                  foregroundColor: Colors.white, 
+                  padding: const EdgeInsets.all(16)
+                ),
               ),
 
             if (_isListening)
