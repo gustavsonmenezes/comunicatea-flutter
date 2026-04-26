@@ -14,37 +14,43 @@ class AuthService extends ChangeNotifier {
   User? get currentUser => _auth.currentUser;
   bool get isLoggedIn => _auth.currentUser != null;
 
-  // 🔥 Restaurando o método para compatibilidade com GamificationService
   User? getCurrentUser() {
     return _auth.currentUser;
   }
 
+  // 🔥 NOVO: Busca o nome do usuário logado
+  Future<String> getUserName() async {
+    final user = _auth.currentUser;
+    if (user == null) return "Usuário";
+
+    try {
+      // Tenta buscar em todas as coleções possíveis
+      final collections = ['professionals', 'parents', 'children'];
+      for (var col in collections) {
+        final doc = await _firestore.collection(col).doc(user.uid).get();
+        if (doc.exists) {
+          return doc.data()?['name'] ?? "Usuário";
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro ao buscar nome: $e');
+    }
+    return user.email?.split('@')[0] ?? "Usuário";
+  }
+
   Future<String> getUserType(String uid) async {
     try {
-      debugPrint('🔍 DATABASE CHECK: Iniciando busca para UID: $uid');
-      
       final parentDoc = await _firestore.collection('parents').doc(uid).get();
-      if (parentDoc.exists) {
-        debugPrint('✅ DATABASE MATCH: Encontrado na coleção PARENTS');
-        return 'parent';
-      }
+      if (parentDoc.exists) return 'parent';
 
       final profDoc = await _firestore.collection('professionals').doc(uid).get();
-      if (profDoc.exists) {
-        debugPrint('✅ DATABASE MATCH: Encontrado na coleção PROFESSIONALS');
-        return 'professional';
-      }
+      if (profDoc.exists) return 'professional';
 
       final childDoc = await _firestore.collection('children').doc(uid).get();
-      if (childDoc.exists) {
-        debugPrint('✅ DATABASE MATCH: Encontrado na coleção CHILDREN');
-        return 'child';
-      }
+      if (childDoc.exists) return 'child';
       
-      debugPrint('⚠️ DATABASE WARNING: UID $uid não encontrado em nenhuma coleção!');
       return 'unknown';
     } catch (e) {
-      debugPrint('❌ DATABASE ERROR: $e');
       return 'unknown';
     }
   }
@@ -60,7 +66,6 @@ class AuthService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('Erro no login: $e');
       return false;
     }
   }
@@ -77,12 +82,10 @@ class AuthService extends ChangeNotifier {
           'role': 'parent',
           'createdAt': FieldValue.serverTimestamp(),
         });
-        debugPrint('📝 PAI CADASTRADO: ${credential.user!.uid}');
       }
       notifyListeners();
       return true;
     } catch (e) {
-      debugPrint('❌ ERRO AO CADASTRAR PAI: $e');
       return false;
     }
   }

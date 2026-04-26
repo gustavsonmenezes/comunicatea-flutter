@@ -16,14 +16,25 @@ class ProfessionalDashboardScreen extends StatefulWidget {
 }
 
 class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScreen> {
+  String _userName = "Carregando..."; // 🔥 NOVO
+
   @override
   void initState() {
     super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    final auth = AuthService();
+    final name = await auth.getUserName();
+    
+    if (mounted) {
+      setState(() => _userName = name);
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<ProfessionalProvider>().loadProfessionalData(user.uid);
-      });
+      context.read<ProfessionalProvider>().loadProfessionalData(user.uid);
     }
   }
 
@@ -34,7 +45,13 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
         return Scaffold(
           backgroundColor: Colors.grey[100],
           appBar: AppBar(
-            title: const Text('Central de Monitoramento'),
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Central de Monitoramento', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Olá, $_userName', style: const TextStyle(fontSize: 12, color: Colors.white70)),
+              ],
+            ),
             backgroundColor: Colors.blue[800],
             foregroundColor: Colors.white,
             elevation: 0,

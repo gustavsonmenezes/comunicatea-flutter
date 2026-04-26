@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_progress_model.dart';
 import '../models/achievement_model.dart';
 import 'database_service.dart';
@@ -15,78 +16,60 @@ class GamificationService extends ChangeNotifier {
   UserProgress _progress = UserProgress(userId: 'temp_user');
   UserProgress get progress => _progress;
 
-  String? _currentProfileId;
   String? _currentChildId;
   final DatabaseService _dbService = DatabaseService();
   final SyncService _syncService = SyncService();
   final AuthService _authService = AuthService();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   static const String _storageKeyPrefix = 'user_progress_';
   final List<Function(Achievement)> _achievementListeners = [];
 
+  // 🔥 Alias para compatibilidade com códigos antigos
   Future<void> initializeForProfile(String profileId) async {
-    _currentProfileId = profileId;
-    
-    // Tenta carregar do Firestore se estiver logado como criança
-    final user = _authService.getCurrentUser();
-    if (user != null) {
-      final userType = await _authService.getUserType(user.uid);
-      if (userType == 'child') {
-        _currentChildId = user.uid;
-        final cloudProgress = await _syncService.fetchProgress(user.uid);
-        if (cloudProgress != null) {
-          _progress = cloudProgress;
-          await _save(); // Sincroniza cache local
-        }
-      }
-    }
-
-    await loadProgressForProfile(profileId);
+    await initializeForChild(profileId);
   }
 
+  // 🔥 Mantendo para compatibilidade
   void setCurrentChild(String childId) {
     _currentChildId = childId;
   }
 
-  Future<void> loadProgressForProfile(String profileId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? data = prefs.getString('$_storageKeyPrefix$profileId');
+  Future<void> initializeForChild(String childId) async {
+    _currentChildId = childId;
+    debugPrint('🎮 GamificationService: Inicializando para Criança ID: $childId');
 
-      if (data != null) {
-        final json = jsonDecode(data);
-        final loadedProgress = UserProgress.fromJson(json);
-        _progress = UserProgress(
-          userId: loadedProgress.userId,
-          totalSessions: loadedProgress.totalSessions,
-          totalPhrasesBuilt: loadedProgress.totalPhrasesBuilt,
-          activeDays: List.from(loadedProgress.activeDays),
-          pictogramUsage: Map<String, int>.from(loadedProgress.pictogramUsage),
-          totalStars: loadedProgress.totalStars,
-          categoryUsage: Map<String, int>.from(loadedProgress.categoryUsage),
-          unlockedAchievementIds: List.from(loadedProgress.unlockedAchievementIds),
-        );
-      } else if (_progress.userId == 'temp_user' || _progress.userId != profileId) {
-        _progress = UserProgress(userId: profileId);
+    try {
+      final doc = await _firestore.collection('children').doc(childId).get();
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        if (data.containsKey('progress')) {
+          _progress = UserProgress.fromJson(data['progress']);
+          debugPrint('✅ GamificationService: Progresso carregado do Cloud. Estrelas: ${_progress.totalStars}');
+        } else {
+          _progress = UserProgress(userId: childId);
+        }
+      } else {
+        _progress = UserProgress(userId: childId);
       }
 
-      _currentProfileId = profileId;
+      await _saveLocal();
       notifyListeners();
     } catch (e) {
-      debugPrint('Erro ao carregar progresso: $e');
-      if (_progress.userId == 'temp_user') {
-        _progress = UserProgress(userId: profileId);
-      }
+      debugPrint('⚠️ GamificationService: Erro ao carregar do Cloud, usando local: $e');
+      await _loadLocal(childId);
     }
   }
 
   Future<void> addStar() async {
-    if (_currentProfileId == null) return;
+    if (_currentChildId == null) return;
+    
     _progress.totalStars++;
     _progress.totalPhrasesBuilt++; 
     
     final newAchievements = _checkAndUnlockAchievements();
-    await _save();
+    
+    await _saveLocal();
     notifyListeners();
 
     for (var achievement in newAchievements) {
@@ -98,8 +81,9 @@ class GamificationService extends ChangeNotifier {
     await _syncData();
   }
 
+  // 🔥 Restaurando o método de registro de categoria
   Future<void> registerCategoryUsage(String categoryId) async {
-    if (_currentProfileId == null) return;
+    if (_currentChildId == null) return;
 
     final usage = Map<String, int>.from(_progress.categoryUsage);
     usage[categoryId] = (usage[categoryId] ?? 0) + 1;
@@ -115,28 +99,22 @@ class GamificationService extends ChangeNotifier {
       unlockedAchievementIds: _progress.unlockedAchievementIds,
     );
 
-    await _save();
+    await _saveLocal();
     notifyListeners();
-
     await _syncData();
   }
 
   Future<void> _syncData() async {
-    // Se não tiver childId definido, tenta pegar o UID do usuário logado
-    if (_currentChildId == null) {
-      final user = _authService.getCurrentUser();
-      if (user != null) {
-        _currentChildId = user.uid;
-      }
-    }
+    if (_currentChildId == null || _currentChildId!.startsWith('temp_')) return;
 
-    if (_currentChildId != null && !_currentChildId!.startsWith('temp_')) {
-      // Salva no SQLite e Firestore (via DatabaseService)
-      await _dbService.updateChildProgress(_currentChildId!, _progress);
-      // Sincroniza especificamente para o Firestore (via SyncService)
-      await _syncService.syncProgress(_currentChildId!, _progress);
-    } else {
-      debugPrint('⚠️ Sincronização ignorada: Usuário não identificado ou ID temporário ($_currentChildId)');
+    try {
+      await _firestore.collection('children').doc(_currentChildId).set({
+        'progress': _progress.toJson(),
+        'lastUpdate': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('☁️ GamificationService: Sincronizado com Firestore.');
+    } catch (e) {
+      debugPrint('❌ GamificationService: Erro na sincronização: $e');
     }
   }
 
@@ -156,13 +134,22 @@ class GamificationService extends ChangeNotifier {
   void addAchievementListener(Function(Achievement) listener) => _achievementListeners.add(listener);
   void removeAchievementListener(Function(Achievement) listener) => _achievementListeners.remove(listener);
 
-  Future<void> _save() async {
-    if (_currentProfileId == null) return;
+  Future<void> _saveLocal() async {
+    if (_currentChildId == null) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('$_storageKeyPrefix$_currentProfileId', jsonEncode(_progress.toJson()));
+      await prefs.setString('$_storageKeyPrefix$_currentChildId', jsonEncode(_progress.toJson()));
     } catch (e) {
       debugPrint('Erro ao salvar progresso local: $e');
+    }
+  }
+
+  Future<void> _loadLocal(String childId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? data = prefs.getString('$_storageKeyPrefix$childId');
+    if (data != null) {
+      _progress = UserProgress.fromJson(jsonDecode(data));
+      notifyListeners();
     }
   }
 }
