@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../providers/professional_provider.dart';
-import '../widgets/child_card.dart';
 import 'child_details_screen.dart';
 import '../../../models/child_profile.dart';
 import '../../../models/profile_settings_model.dart';
@@ -154,39 +153,75 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
         final child = provider.children[index];
         final bool isInactive = DateTime.now().difference(child.lastActive ?? DateTime.now()).inDays > 3;
 
-        return Card(
-          elevation: 0,
-          margin: const EdgeInsets.only(bottom: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: isInactive ? Colors.red[100]! : Colors.transparent),
+        return Dismissible(
+          key: Key(child.id),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.red[400],
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.delete, color: Colors.white),
           ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(12),
-            leading: CircleAvatar(
-              radius: 25,
-              backgroundColor: isInactive ? Colors.red[100] : Colors.blue[100],
-              child: Icon(Icons.person, color: isInactive ? Colors.red : Colors.blue[800]),
+          confirmDismiss: (direction) async {
+            return await showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Confirmar Exclusão'),
+                content: Text('Deseja realmente remover o aluno ${child.name} do sistema? Esta ação não pode ser desfeita.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCELAR')),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, true), 
+                    child: const Text('DELETAR', style: TextStyle(color: Colors.red))
+                  ),
+                ],
+              ),
+            );
+          },
+          onDismissed: (direction) {
+            provider.deleteChild(child.id);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('${child.name} removido do monitoramento')),
+            );
+          },
+          child: Card(
+            elevation: 0,
+            margin: const EdgeInsets.only(bottom: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: isInactive ? Colors.red[100]! : Colors.transparent),
             ),
-            title: Text(child.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text('⭐ ${child.progress.totalStars} estrelas conquistadas'),
-                Text(
-                  'Último acesso: ${_formatDate(child.lastActive)}',
-                  style: TextStyle(fontSize: 12, color: isInactive ? Colors.red : Colors.grey),
-                ),
-              ],
+            child: ListTile(
+              contentPadding: const EdgeInsets.all(12),
+              leading: CircleAvatar(
+                radius: 25,
+                backgroundColor: isInactive ? Colors.red[100] : Colors.blue[100],
+                child: Icon(Icons.person, color: isInactive ? Colors.red : Colors.blue[800]),
+              ),
+              title: Text(child.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 4),
+                  Text('⭐ ${child.progress.totalStars} estrelas conquistadas'),
+                  Text(
+                    'Último acesso: ${_formatDate(child.lastActive)}',
+                    style: TextStyle(fontSize: 12, color: isInactive ? Colors.red : Colors.grey),
+                  ),
+                ],
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => ChildDetailsScreen(child: child)),
+                );
+              },
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ChildDetailsScreen(child: child)),
-              );
-            },
           ),
         );
       },
@@ -198,7 +233,6 @@ class _ProfessionalDashboardScreenState extends State<ProfessionalDashboardScree
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  // O restante dos métodos (_showAddChildDialog, _showCredentialsDialog) permanecem os mesmos.
   void _showAddChildDialog(BuildContext context, ProfessionalProvider provider) {
     final nameController = TextEditingController();
     final ageController = TextEditingController();

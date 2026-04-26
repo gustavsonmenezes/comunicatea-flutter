@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/database_service.dart';
 import '../../../models/child_profile.dart';
@@ -17,7 +18,6 @@ class ProfessionalProvider extends ChangeNotifier {
 
   StreamSubscription<List<ChildProfile>>? _childrenSubscription;
 
-  // Getters
   List<ChildProfile> get children => _children;
   List<Map<String, dynamic>> get alerts => _alerts;
   bool get isLoading => _isLoading;
@@ -42,8 +42,6 @@ class ProfessionalProvider extends ChangeNotifier {
     super.dispose();
   }
 
-  // ========================== MÉTODOS PRINCIPAIS ==========================
-
   Future<void> loadProfessionalData(String professionalId) async {
     _isLoading = true;
     _error = null;
@@ -51,7 +49,6 @@ class ProfessionalProvider extends ChangeNotifier {
 
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
-
       if (currentUser == null) {
         _error = 'Nenhum profissional logado';
         _isLoading = false;
@@ -59,28 +56,28 @@ class ProfessionalProvider extends ChangeNotifier {
         return;
       }
 
-      if (kIsWeb) {
-        // Na Web, usamos Stream para tempo real baseado no e-mail
-        await _childrenSubscription?.cancel();
-        _childrenSubscription = _databaseService
-            .getChildrenStreamByProfessional(currentUser.email)
-            .listen((updatedChildren) {
-          _children = updatedChildren;
-          _checkAlerts();
-          _isLoading = false;
-          notifyListeners();
-        }, onError: (e) {
-          _error = 'Erro no Stream: $e';
-          _isLoading = false;
-          notifyListeners();
-        });
-      } else {
-        // No Mobile, busca local (SQLite)
-        _children = await _databaseService.getChildrenByProfessional(professionalId);
+      await _childrenSubscription?.cancel();
+      _childrenSubscription = _databaseService
+          .getChildrenStreamByProfessional(currentUser.email)
+          .listen((updatedChildren) async {
+        
+        _children = updatedChildren;
+        
+        if (!kIsWeb) {
+          for (var child in updatedChildren) {
+            await _databaseService.saveChild(child); 
+          }
+        }
+        
         _checkAlerts();
         _isLoading = false;
         notifyListeners();
-      }
+      }, onError: (e) {
+        _error = 'Erro na sincronização: $e';
+        _isLoading = false;
+        notifyListeners();
+      });
+
     } catch (e) {
       _error = 'Erro ao carregar dados: $e';
       _isLoading = false;
@@ -91,7 +88,6 @@ class ProfessionalProvider extends ChangeNotifier {
   void _checkAlerts() {
     _alerts = [];
     final today = DateTime.now();
-    
     for (var child in _children) {
       if (child.lastActive != null) {
         final difference = today.difference(child.lastActive!).inDays;
@@ -106,17 +102,69 @@ class ProfessionalProvider extends ChangeNotifier {
     }
   }
 
-  // Adicionado para compatibilidade com ProfessionalDashboardScreen
   Future<void> addChild(ChildProfile child) async {
     try {
-      await _databaseService.saveChild(child);
+      final currentUser = FirebaseAuth.instance.currentUser;
+      ChildProfile childToSave = child;
+
+      if (currentUser != null && currentUser.email != null) {
+        List<String> emails = List<String>.from(child.professionalEmails ?? []);
+        if (!emails.contains(currentUser.email)) {
+          emails.add(currentUser.email!);
+          childToSave = ChildProfile(
+            id: child.id,
+            name: child.name,
+            email: child.email,
+            age: child.age,
+            diagnosis: child.diagnosis,
+            photoUrl: child.photoUrl,
+            professionalIds: child.professionalIds,
+            professionalEmails: emails,
+            settings: child.settings,
+            progress: child.progress,
+            lastActive: child.lastActive,
+            createdAt: child.createdAt,
+          );
+        }
+      }
+
+      await _databaseService.saveChild(childToSave);
+      
       if (!kIsWeb) {
-        _children.add(child);
+        if (!_children.any((c) => c.id == childToSave.id)) {
+          _children.add(childToSave);
+        }
         _checkAlerts();
         notifyListeners();
       }
     } catch (e) {
       _error = 'Erro ao adicionar criança: $e';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  // 🔥 NOVO: MÉTODO PARA DELETAR CRIANÇA
+  Future<void> deleteChild(String childId) async {
+    try {
+      // 1. Remove do Firebase
+      await FirebaseFirestore.instance.collection('children').doc(childId).delete();
+      
+      // 2. Remove do SQLite (Mobile)
+      if (!kIsWeb) {
+        final db = await _databaseService.database;
+        if (db != null) {
+          await db.delete('children', where: 'id = ?', whereArgs: [childId]);
+        }
+      }
+
+      // 3. Atualiza a lista local
+      _children.removeWhere((c) => c.id == childId);
+      _checkAlerts();
+      notifyListeners();
+      
+    } catch (e) {
+      _error = 'Erro ao deletar criança: $e';
       notifyListeners();
       rethrow;
     }
