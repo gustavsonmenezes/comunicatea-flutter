@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/communication/communication_screen.dart';
+import 'features/professional/screens/child_details_screen.dart';
 import 'features/professional/screens/professional_dashboard_screen.dart';
 import 'features/settings/speech_stats_screen.dart';
 import 'services/auth_service.dart';
@@ -11,6 +12,8 @@ import 'services/profile_service.dart';
 import 'services/gamification_service.dart';
 import 'features/professional/providers/professional_provider.dart';
 import 'firebase_options.dart';
+
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,11 +46,9 @@ class ComunicaTeaApp extends StatelessWidget {
     return MaterialApp(
       title: 'COMUNICA-TEA',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        useMaterial3: true,
-      ),
-      initialRoute: '/',
+      theme: AppTheme.lightTheme,
+      // 🔥 Rota Inicial alterada para o Login conforme solicitado
+      initialRoute: '/login', 
       routes: {
         '/': (context) => const SplashScreen(),
         '/login': (context) => const LoginScreen(),

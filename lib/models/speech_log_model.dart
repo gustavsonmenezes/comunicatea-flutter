@@ -2,7 +2,7 @@ import 'package:uuid/uuid.dart';
 
 class SpeechLog {
   final String id;
-  final String childId; // 🔥 ADICIONADO: Para saber de qual criança é o log
+  final String childId;
   final String pictogramId;
   final String targetWord;
   final String recognizedWords;
@@ -37,14 +37,16 @@ class SpeechLog {
 
   factory SpeechLog.fromMap(Map<String, dynamic> map) {
     return SpeechLog(
-      id: map['id'],
-      childId: map['childId'] ?? '',
-      pictogramId: map['pictogram_id'],
-      targetWord: map['target_word'],
-      recognizedWords: map['recognized_words'],
-      isSuccess: map['is_success'] == 1,
-      confidence: map['confidence']?.toDouble() ?? 0.0,
-      timestamp: DateTime.parse(map['timestamp']),
+      id: map['id']?.toString() ?? '',
+      childId: map['childId']?.toString() ?? '',
+      pictogramId: map['pictogram_id']?.toString() ?? '',
+      targetWord: map['target_word']?.toString() ?? '',
+      recognizedWords: map['recognized_words']?.toString() ?? '', // 🔥 Garante que nunca seja null
+      isSuccess: (map['is_success'] == 1 || map['is_success'] == true),
+      confidence: (map['confidence'] as num?)?.toDouble() ?? 0.0,
+      timestamp: map['timestamp'] != null 
+          ? DateTime.parse(map['timestamp']) 
+          : DateTime.now(),
     );
   }
 }

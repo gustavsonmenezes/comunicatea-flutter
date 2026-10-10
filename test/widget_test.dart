@@ -13,7 +13,8 @@ import 'package:comunica_tea/main.dart';
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+    // Alterado de MyApp() para ComunicaTeaApp() para refletir o nome correto da classe no main.dart
+    await tester.pumpWidget(const ComunicaTeaApp());
 
     // Verify that our counter starts at 0.
     expect(find.text('0'), findsOneWidget);

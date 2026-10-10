@@ -52,10 +52,28 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
 
   Future<void> _initAndPlayAudio() async {
     await _flutterTts.setLanguage("pt-BR");
+
+    // Quando terminar de falar a palavra, inicia a escuta do microfone automaticamente
+    _flutterTts.setCompletionHandler(() {
+      if (mounted && !_isListening && !_isSuccess) {
+        _startListening();
+      }
+    });
+
     await _flutterTts.speak(widget.pictogram.label);
+
+    // Temporizador de garantia para acionar a escuta caso o evento de término do TTS não seja emitido
+    Future.delayed(const Duration(milliseconds: 1600), () {
+      if (mounted && !_isListening && !_isSuccess && !_showNotUnderstood) {
+        _startListening();
+      }
+    });
   }
 
   void _startListening() async {
+    // Parar a voz sintetizada para liberar o microfone/áudio
+    await _flutterTts.stop();
+
     setState(() {
       _isListening = true;
       _currentConfidence = 0.0;
@@ -63,27 +81,68 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
       _showNotUnderstood = false;
     });
 
-    await _speechService.initSpeech();
-    if (_speechService.isAvailable) {
-      _speechService.startListening(
-          onResult: (words) {
-            if (mounted) {
-              setState(() {
-                _currentRecognized = words;
-                _currentConfidence = _speechService.confidence;
-              });
-              _checkMatch(words);
-            }
+    final bool available = await _speechService.initSpeech();
+    if (!mounted) return;
+
+    if (available) {
+      final started = await _speechService.startListening(
+        onResult: (words) {
+          if (mounted) {
+            setState(() {
+              _currentRecognized = words;
+              _currentConfidence = _speechService.confidence;
+            });
+            _checkMatch(words);
           }
+        },
       );
 
-      // Timeout de segurança: Se após 5 segundos não houver sucesso
-      Future.delayed(const Duration(seconds: 5), () {
+      if (!started && mounted) {
+        _handleFailure();
+        return;
+      }
+
+      // Timeout de segurança: Se após 8 segundos não houver sucesso
+      Future.delayed(const Duration(seconds: 8), () {
         if (mounted && _isListening && !_isSuccess) {
-          _handleFailure(); // 🔥 Agora registra falha no timeout
+          _handleFailure();
         }
       });
+    } else {
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _showNotUnderstood = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reconhecimento de voz indisponível ou permissão de microfone não concedida.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
+  }
+
+  int _levenshteinDistance(String s1, String s2) {
+    if (s1 == s2) return 0;
+    if (s1.isEmpty) return s2.length;
+    if (s2.isEmpty) return s1.length;
+
+    List<int> v0 = List<int>.generate(s2.length + 1, (i) => i);
+    List<int> v1 = List<int>.filled(s2.length + 1, 0);
+
+    for (int i = 0; i < s1.length; i++) {
+      v1[0] = i + 1;
+      for (int j = 0; j < s2.length; j++) {
+        int cost = (s1[i] == s2[j]) ? 0 : 1;
+        v1[j + 1] = [v1[j] + 1, v0[j + 1] + 1, v0[j] + cost].reduce((a, b) => a < b ? a : b);
+      }
+      for (int j = 0; j <= s2.length; j++) {
+        v0[j] = v1[j];
+      }
+    }
+    return v1[s2.length];
   }
 
   void _checkMatch(String spokenWords) {
@@ -92,11 +151,41 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     final targetWord = _normalize(widget.pictogram.label);
     final recognized = _normalize(spokenWords);
 
+    if (targetWord.isEmpty || recognized.isEmpty) return;
+
     bool isMatch = false;
+
     if (recognized == targetWord) {
       isMatch = true;
-    } else if (_currentConfidence > 0.80 && (recognized.contains(targetWord) || targetWord.contains(recognized))) {
+    } else if (recognized.contains(targetWord) || targetWord.contains(recognized)) {
       isMatch = true;
+    } else {
+      // 1. Distância de Levenshtein direta na palavra
+      final distance = _levenshteinDistance(recognized, targetWord);
+      final maxAllowedDistance = targetWord.length <= 4 ? 1 : 2;
+      if (distance <= maxAllowedDistance) {
+        isMatch = true;
+      } else {
+        // 2. Comparação por palavras individuais com distância fonética
+        final recognizedTokens = recognized.split(RegExp(r'\s+'));
+        final targetTokens = targetWord.split(RegExp(r'\s+'));
+
+        for (var recToken in recognizedTokens) {
+          for (var tarToken in targetTokens) {
+            if (recToken == tarToken) {
+              isMatch = true;
+              break;
+            }
+            if (recToken.length >= 3 && tarToken.length >= 3) {
+              if (_levenshteinDistance(recToken, tarToken) <= 1) {
+                isMatch = true;
+                break;
+              }
+            }
+          }
+          if (isMatch) break;
+        }
+      }
     }
 
     if (isMatch) {
@@ -141,12 +230,12 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     for (int i = 0; i < accents.length; i++) {
       result = result.replaceAll(accents[i], noAccents[i]);
     }
-    return result;
+    return result.replaceAll(RegExp(r'[^\w\s]'), '').trim();
   }
 
   void _handleSuccess() async {
     setState(() { _isSuccess = true; _isListening = false; });
-    _speechService.stopListening();
+    await _speechService.stopListening();
     
     if (_childId != null) {
       await _logService.saveLog(SpeechLog(
@@ -161,7 +250,15 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     
     await SoundManager().playSuccess();
     await _gamificationService.addStar();
-    Future.delayed(const Duration(seconds: 1), () {
+
+    try {
+      await _flutterTts.setLanguage("pt-BR");
+      await _flutterTts.speak("Muito bem! ${widget.pictogram.label}!");
+    } catch (e) {
+      debugPrint("Erro ao sintetizar confirmação: $e");
+    }
+
+    Future.delayed(const Duration(milliseconds: 1800), () {
       if (mounted) Navigator.of(context).pop(true);
     });
   }
@@ -174,27 +271,33 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Repita a palavra', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            Icon(widget.pictogram.icon, size: 64, color: Colors.blue[800]),
-            Text(widget.pictogram.label, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blue)),
+            Icon(widget.pictogram.icon, size: 72, color: Colors.blue[800]),
+            const SizedBox(height: 8),
+            Text(
+              widget.pictogram.label,
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.blue),
+            ),
             const SizedBox(height: 24),
-            
+
             if (!_isListening && !_isSuccess && !_showNotUnderstood)
               ElevatedButton.icon(
                 onPressed: _startListening,
-                icon: const Icon(Icons.mic),
-                label: Text(_attempts > 0 ? 'TENTAR NOVAMENTE' : 'TOCAR PARA FALAR'),
+                icon: const Icon(Icons.mic, size: 28),
+                label: Text(
+                  _attempts > 0 ? 'FALAR NOVAMENTE' : 'TOCAR PARA FALAR',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: _attempts > 0 ? Colors.orange : Colors.green, 
-                  foregroundColor: Colors.white, 
-                  padding: const EdgeInsets.all(16)
+                  backgroundColor: _attempts > 0 ? Colors.orange : Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
               ),
 
@@ -203,7 +306,10 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
                 children: [
                   const LinearProgressIndicator(),
                   const SizedBox(height: 12),
-                  Text(_currentRecognized.isEmpty ? 'Ouvindo...' : '"$_currentRecognized"', style: const TextStyle(fontStyle: FontStyle.italic)),
+                  Text(
+                    _currentRecognized.isEmpty ? 'Ouvindo...' : '"$_currentRecognized"',
+                    style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
+                  ),
                 ],
               ),
 
@@ -211,15 +317,21 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
               const Column(
                 children: [
                   Icon(Icons.help_outline, color: Colors.orange, size: 48),
-                  Text('Não entendi bem...', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                  Text('Tente falar novamente', style: TextStyle(fontSize: 12)),
+                  SizedBox(height: 8),
+                  Text(
+                    'Não entendi, tente falar novamente',
+                    style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
 
-            if (_isSuccess) const Icon(Icons.check_circle, color: Colors.green, size: 60),
-            
+            if (_isSuccess) const Icon(Icons.check_circle, color: Colors.green, size: 64),
+
             const SizedBox(height: 16),
-            TextButton(onPressed: _handleCancel, child: const Text('CANCELAR', style: TextStyle(color: Colors.grey))),
+            TextButton(
+              onPressed: _handleCancel,
+              child: const Text('CANCELAR', style: TextStyle(color: Colors.grey)),
+            ),
           ],
         ),
       ),

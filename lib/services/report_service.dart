@@ -29,15 +29,32 @@ class ReportService {
   Future<Map<String, dynamic>?> getLatestReport(String childId) async {
     try {
       debugPrint('📡 ReportService: Buscando relatório para ChildId: $childId');
-      final doc = await _firestore.collection('reports').doc(childId).get();
+
+      // 1. Tenta buscar pelo ID direto (UID)
+      var doc = await _firestore.collection('reports').doc(childId).get();
       
       if (doc.exists) {
-        debugPrint('✅ ReportService: Relatório encontrado!');
+        debugPrint('✅ ReportService: Relatório encontrado via UID!');
         return doc.data();
-      } else {
-        debugPrint('⚠️ ReportService: Nenhum documento encontrado para este ChildId.');
-        return null;
       }
+
+      // 2. Se não encontrar, e o ID parecer um shortId (numérico), busca a criança primeiro
+      final isShortId = RegExp(r'^\d+$').hasMatch(childId);
+      if (isShortId) {
+        debugPrint('🔍 ReportService: ID parece um código curto. Buscando criança real...');
+        final childQuery = await _firestore.collection('children')
+            .where('shortId', isEqualTo: childId).get();
+
+        if (childQuery.docs.isNotEmpty) {
+          final realUid = childQuery.docs.first.id;
+          debugPrint('🎯 ReportService: Criança encontrada! UID Real: $realUid. Buscando relatório...');
+          doc = await _firestore.collection('reports').doc(realUid).get();
+          if (doc.exists) return doc.data();
+        }
+      }
+
+      debugPrint('⚠️ ReportService: Nenhum relatório localizado.');
+      return null;
     } catch (e) {
       debugPrint('❌ ReportService: Erro ao buscar relatório: $e');
       return null;

@@ -4,8 +4,9 @@ import 'user_progress_model.dart';
 
 class ChildProfile {
   final String id;
+  final String shortId; // 🔥 Novo campo para vínculo fácil
   final String name;
-  final String email; // 🔥 NOVO CAMPO
+  final String email;
   final int age;
   final String diagnosis;
   final String photoUrl;
@@ -18,8 +19,9 @@ class ChildProfile {
 
   ChildProfile({
     required this.id,
+    this.shortId = '', // 🔥 Novo campo
     required this.name,
-    this.email = '', // 🔥 NOVO CAMPO
+    this.email = '',
     required this.age,
     this.diagnosis = '',
     this.photoUrl = '',
@@ -31,12 +33,12 @@ class ChildProfile {
     this.createdAt,
   });
 
-  // Converte de JSON (SQLite ou Firestore) para o Objeto
   factory ChildProfile.fromJson(Map<String, dynamic> json) {
     return ChildProfile(
       id: json['id'] ?? '',
+      shortId: json['shortId'] ?? '', // 🔥 Novo campo
       name: json['name'] ?? '',
-      email: json['email'] ?? '', // 🔥 NOVO CAMPO
+      email: json['email'] ?? '',
       age: json['age'] ?? 0,
       diagnosis: json['diagnosis'] ?? '',
       photoUrl: json['photoUrl'] ?? '',
@@ -61,12 +63,12 @@ class ChildProfile {
     );
   }
 
-  // Converte do Objeto para JSON (Para salvar no banco)
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      'shortId': shortId, // 🔥 Novo campo
       'name': name,
-      'email': email, // 🔥 NOVO CAMPO
+      'email': email,
       'age': age,
       'diagnosis': diagnosis,
       'photoUrl': photoUrl,

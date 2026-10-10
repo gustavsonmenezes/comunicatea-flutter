@@ -13,6 +13,9 @@ class ProfileService extends ChangeNotifier {
 
   ChildProfile? _currentChild;
   ChildProfile? get currentChild => _currentChild;
+  
+  // Getter para compatibilidade com códigos legados
+  ChildProfile? get currentProfile => _currentChild;
 
   // Seleciona a criança atual e salva no estado
   void selectChild(ChildProfile child) {
@@ -40,8 +43,8 @@ class ProfileService extends ChangeNotifier {
         diagnosis: diagnosis,
         professionalIds: [user.uid],
         professionalEmails: [user.email ?? ''],
-        settings: ProfileSettings(), // Adicionado para bater com o modelo
-        progress: UserProgress(userId: childId), // Adicionado para bater com o modelo
+        settings: ProfileSettings(), 
+        progress: UserProgress(userId: childId), 
         lastActive: DateTime.now(),
         createdAt: DateTime.now(),
       );

@@ -2,7 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/child_profile.dart';
 import '../models/user_progress_model.dart';
@@ -26,11 +26,20 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'comunica_tea_v3.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute(
-          'CREATE TABLE children(id TEXT PRIMARY KEY, name TEXT, email TEXT, age INTEGER, diagnosis TEXT, photoUrl TEXT, professionalIds TEXT, professionalEmails TEXT, lastActive TEXT, createdAt TEXT, settings TEXT, progress TEXT)',
+          'CREATE TABLE children(id TEXT PRIMARY KEY, shortId TEXT, name TEXT, email TEXT, age INTEGER, diagnosis TEXT, photoUrl TEXT, professionalIds TEXT, professionalEmails TEXT, lastActive TEXT, createdAt TEXT, settings TEXT, progress TEXT)',
         );
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          try {
+            await db.execute('ALTER TABLE children ADD COLUMN shortId TEXT');
+          } catch (e) {
+            debugPrint("Erro ao adicionar coluna shortId: $e");
+          }
+        }
       },
     );
   }
@@ -73,7 +82,7 @@ class DatabaseService {
           .doc(logId)
           .set(logData, SetOptions(merge: true));
     } catch (e) {
-      print('Erro ao sincronizar log de fala: $e');
+      debugPrint('Erro ao sincronizar log de fala: $e');
     }
   }
 

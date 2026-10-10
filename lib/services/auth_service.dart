@@ -72,13 +72,31 @@ class AuthService extends ChangeNotifier {
 
   Future<bool> registerParent(String email, String password, String name, String childId) async {
     try {
+      // Tenta encontrar a criança pelo ID (pode ser o UID real ou o código numérico do email)
+      String finalChildId = childId;
+
+      final childByShortId = await _firestore.collection('children')
+          .where('shortId', isEqualTo: childId).get();
+
+      if (childByShortId.docs.isNotEmpty) {
+        finalChildId = childByShortId.docs.first.id;
+      } else {
+        // Fallback: busca pelo e-mail se a criança for antiga
+        final allChildren = await _firestore.collection('children').get();
+        final match = allChildren.docs.firstWhere(
+          (doc) => doc.data()['email'].toString().contains(childId),
+          orElse: () => allChildren.docs.first
+        );
+        finalChildId = match.id;
+      }
+
       final credential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
       if (credential.user != null) {
         await _firestore.collection('parents').doc(credential.user!.uid).set({
           'id': credential.user!.uid,
           'name': name,
           'email': email,
-          'childId': childId,
+          'childId': finalChildId,
           'role': 'parent',
           'createdAt': FieldValue.serverTimestamp(),
         });
@@ -115,6 +133,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<UserCredential?> registerChild(String email, String password, String name) async {
+    String shortId = email.split('.').last.split('@').first;
     String appName = 'ChildRegistration_${DateTime.now().millisecondsSinceEpoch}';
     FirebaseApp? secondaryApp;
     try {
@@ -123,6 +142,7 @@ class AuthService extends ChangeNotifier {
       if (credential.user != null) {
         await _firestore.collection('children').doc(credential.user!.uid).set({
           'id': credential.user!.uid,
+          'shortId': shortId, // 🔥 Garante que o ID curto seja salvo no Firestore
           'name': name,
           'email': email,
           'role': 'child',

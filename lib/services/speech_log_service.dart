@@ -30,9 +30,13 @@ class SpeechLogService {
         )
       ''');
 
-      try {
-        await db.execute('ALTER TABLE speech_logs ADD COLUMN childId TEXT');
-      } catch (e) {}
+      final columns = await db.rawQuery('PRAGMA table_info(speech_logs)');
+      final hasChildId = columns.any((col) => col['name'] == 'childId');
+      if (!hasChildId) {
+        try {
+          await db.execute('ALTER TABLE speech_logs ADD COLUMN childId TEXT');
+        } catch (e) {}
+      }
     } catch (e) {
       debugPrint('Erro ao verificar tabela speech_logs: $e');
     }
