@@ -55,19 +55,6 @@ class _CommunicationScreenState extends State<CommunicationScreen> {
   }
 
   void _adicionarPictograma(Pictogram pictogram) async {
-    // 1. PRIMEIRO: Tocar o áudio com o nome do pictograma para a criança escutar
-    try {
-      await _flutterTts.stop();
-      await _flutterTts.setLanguage("pt-BR");
-      await _flutterTts.setSpeechRate(0.5);
-      await _flutterTts.speak(pictogram.label);
-    } catch (e) {
-      debugPrint("Erro ao reproduzir áudio do pictograma: $e");
-    }
-
-    if (!mounted) return;
-
-    // 2. DEPOIS: Abrir a tela de validação para a criança tentar falar
     final bool? success = await showDialog<bool>(
       context: context,
       barrierDismissible: false,

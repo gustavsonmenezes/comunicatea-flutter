@@ -53,6 +53,9 @@ class SpeechRecognitionService extends ChangeNotifier {
     return _isAvailable;
   }
 
+  double _soundLevel = -2.0;
+  double get soundLevel => _soundLevel;
+
   Future<bool> startListening({required Function(String) onResult}) async {
     _lastError = null;
 
@@ -67,6 +70,7 @@ class SpeechRecognitionService extends ChangeNotifier {
     if (_isAvailable) {
       _lastWords = '';
       _confidence = 0.0;
+      _soundLevel = -2.0;
 
       String targetLocale = 'pt_BR';
       try {
@@ -93,14 +97,18 @@ class SpeechRecognitionService extends ChangeNotifier {
             onResult(_lastWords);
             notifyListeners();
           },
+          onSoundLevelChange: (level) {
+            _soundLevel = level;
+            notifyListeners();
+          },
           localeId: targetLocale,
           listenOptions: stt.SpeechListenOptions(
-            cancelOnError: false,
             partialResults: true,
-            listenMode: kIsWeb ? stt.ListenMode.dictation : stt.ListenMode.deviceDefault,
+            cancelOnError: false,
+            listenMode: kIsWeb ? stt.ListenMode.dictation : stt.ListenMode.confirmation,
           ),
-          listenFor: const Duration(seconds: 15),
-          pauseFor: const Duration(seconds: 5),
+          listenFor: const Duration(seconds: 12),
+          pauseFor: const Duration(seconds: 4),
         );
         _isListening = true;
         notifyListeners();

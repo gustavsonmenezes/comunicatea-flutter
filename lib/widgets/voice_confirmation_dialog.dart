@@ -23,6 +23,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   final FlutterTts _flutterTts = FlutterTts();
   final SpeechLogService _logService = SpeechLogService();
 
+  bool _isEscutandoPronuncia = true; // 🔥 Passo 1: Ouvindo a pronúncia primeiro
   bool _isSuccess = false;
   bool _isListening = false;
   bool _showNotUnderstood = false;
@@ -34,7 +35,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
   @override
   void initState() {
     super.initState();
-    _initAndPlayAudio();
+    _playPronunciationThenListen();
     _loadChildId();
   }
 
@@ -50,31 +51,45 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     super.dispose();
   }
 
-  Future<void> _initAndPlayAudio() async {
-    await _flutterTts.setLanguage("pt-BR");
-
-    // Quando terminar de falar a palavra, inicia a escuta do microfone automaticamente
-    _flutterTts.setCompletionHandler(() {
-      if (mounted && !_isListening && !_isSuccess) {
-        _startListening();
-      }
+  // 🔊 PASSO 1: Falar a pronúncia para a criança escutar primeiro
+  Future<void> _playPronunciationThenListen() async {
+    await _speechService.cancelListening();
+    
+    setState(() {
+      _isEscutandoPronuncia = true;
+      _isListening = false;
+      _showNotUnderstood = false;
     });
 
-    await _flutterTts.speak(widget.pictogram.label);
+    try {
+      await _flutterTts.setLanguage("pt-BR");
+      await _flutterTts.setSpeechRate(0.5);
+      await _flutterTts.speak(widget.pictogram.label);
+    } catch (e) {
+      debugPrint("Erro ao sintetizar pronúncia: $e");
+    }
 
-    // Temporizador de garantia para acionar a escuta caso o evento de término do TTS não seja emitido
-    Future.delayed(const Duration(milliseconds: 1600), () {
-      if (mounted && !_isListening && !_isSuccess && !_showNotUnderstood) {
+    // 🎙️ PASSO 2: Após a criança escutar a pronúncia (2 segundos), ativa o microfone para ela falar
+    Future.delayed(const Duration(milliseconds: 2000), () {
+      if (mounted && !_isSuccess) {
+        setState(() {
+          _isEscutandoPronuncia = false;
+        });
         _startListening();
       }
     });
   }
 
   void _startListening() async {
-    // Parar a voz sintetizada para liberar o microfone/áudio
-    await _flutterTts.stop();
+    try {
+      await _flutterTts.stop();
+    } catch (e) {}
+
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
 
     setState(() {
+      _isEscutandoPronuncia = false;
       _isListening = true;
       _currentConfidence = 0.0;
       _currentRecognized = '';
@@ -102,7 +117,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
         return;
       }
 
-      // Timeout de segurança: Se após 8 segundos não houver sucesso
+      // Timeout de segurança após 8 segundos de escuta
       Future.delayed(const Duration(seconds: 8), () {
         if (mounted && _isListening && !_isSuccess) {
           _handleFailure();
@@ -116,7 +131,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Reconhecimento de voz indisponível ou permissão de microfone não concedida.'),
+            content: Text('Reconhecimento de voz indisponível ou permissão não concedida.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -193,7 +208,7 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     }
   }
 
-  // 🔥 NOVA FUNÇÃO: Registra que a criança errou ou não foi entendida
+  // 🔥 Registra falha ou tentativa não compreendida
   void _handleFailure() async {
     if (!mounted || _isSuccess) return;
 
@@ -206,14 +221,13 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
     _speechService.stopListening();
     await SoundManager().playError();
 
-    // Registra o log de erro para a IA analisar
     if (_childId != null) {
       await _logService.saveLog(SpeechLog(
         childId: _childId!,
         pictogramId: widget.pictogram.id,
         targetWord: widget.pictogram.label,
         recognizedWords: _currentRecognized.isEmpty ? "(Silêncio/Ruído)" : _currentRecognized,
-        isSuccess: false, // ❌ Sucesso: Falso
+        isSuccess: false,
         confidence: _currentConfidence,
       ));
     }
@@ -283,44 +297,76 @@ class _VoiceConfirmationDialogState extends State<VoiceConfirmationDialog> with 
               widget.pictogram.label,
               style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.blue),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
-            if (!_isListening && !_isSuccess && !_showNotUnderstood)
-              ElevatedButton.icon(
-                onPressed: _startListening,
-                icon: const Icon(Icons.mic, size: 28),
-                label: Text(
-                  _attempts > 0 ? 'FALAR NOVAMENTE' : 'TOCAR PARA FALAR',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _attempts > 0 ? Colors.orange : Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                ),
+            // 🔊 PASSO 1: A criança ESCUTA primeiro a pronúncia da palavra
+            if (_isEscutandoPronuncia)
+              Column(
+                children: [
+                  const Icon(Icons.volume_up_rounded, size: 48, color: Colors.blue),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Escute: "${widget.pictogram.label}"',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue),
+                  ),
+                ],
               ),
 
-            if (_isListening)
+            // 🎙️ PASSO 2: Apenas APÓS escutar, libera o microfone para a criança FALAR
+            if (!_isEscutandoPronuncia && _isListening)
               Column(
                 children: [
                   const LinearProgressIndicator(),
                   const SizedBox(height: 12),
+                  const Text('Sua vez! Fale a palavra:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 6),
                   Text(
                     _currentRecognized.isEmpty ? 'Ouvindo...' : '"$_currentRecognized"',
-                    style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic),
+                    style: const TextStyle(fontSize: 18, fontStyle: FontStyle.italic, color: Colors.green, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+
+            if (!_isEscutandoPronuncia && !_isListening && !_isSuccess && !_showNotUnderstood)
+              Column(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _playPronunciationThenListen,
+                    icon: const Icon(Icons.volume_up, size: 24),
+                    label: const Text('OUVIR NOVAMENTE'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: _startListening,
+                    icon: const Icon(Icons.mic, size: 24),
+                    label: Text(_attempts > 0 ? 'FALAR NOVAMENTE' : 'TOCAR PARA FALAR'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _attempts > 0 ? Colors.orange : Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
                   ),
                 ],
               ),
 
             if (_showNotUnderstood)
-              const Column(
+              Column(
                 children: [
-                  Icon(Icons.help_outline, color: Colors.orange, size: 48),
-                  SizedBox(height: 8),
-                  Text(
+                  const Icon(Icons.help_outline, color: Colors.orange, size: 48),
+                  const SizedBox(height: 8),
+                  const Text(
                     'Não entendi, tente falar novamente',
                     style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: _playPronunciationThenListen,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('OUVIR E TENTAR DE NOVO'),
                   ),
                 ],
               ),
